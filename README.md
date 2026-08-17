@@ -75,13 +75,43 @@ O arquivo `.env` está no `.gitignore` e não deve ser versionado.
 
 ### 3. Executar as migrations
 
-*(Disponível a partir da Fase 2.)* Os arquivos ficam em `supabase/migrations/`, numerados na ordem
-de execução. Rode-os no **SQL Editor** do painel do Supabase, um de cada vez e em ordem.
+No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/migrations/`
+**na ordem**, um de cada vez — cole o conteúdo inteiro de cada um e clique em *Run*:
+
+| Ordem | Arquivo | O que faz |
+|---|---|---|
+| 1 | `0001_schema.sql` | Cria as 10 tabelas, constraints e índices |
+| 2 | `0002_rls.sql` | Liga o Row Level Security e cria as políticas |
+| 3 | `0003_triggers.sql` | `updated_at` automático e criação do perfil |
+
+Para conferir que deu certo, rode:
+
+```sql
+select tablename, rowsecurity
+from pg_tables
+where schemaname = 'public'
+order by tablename;
+```
+
+Devem aparecer **10 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
+foi aplicado e os dados estariam expostos — não siga adiante.
 
 ### 4. Criar o usuário professor
 
-*(A partir da Fase 2.)* Em **Authentication → Users → Add user**, crie o usuário com e-mail e
-senha. O MVP não tem tela de cadastro público.
+Em **Authentication → Users → Add user**:
+
+1. Preencha e-mail e senha.
+2. Marque **Auto Confirm User** (sem isso o login recusa com "e-mail não confirmado").
+3. Opcionalmente, em *User Metadata*, adicione `{ "name": "Seu Nome" }` — o trigger usa isso no
+   perfil. Sem esse campo, o nome vira a parte do e-mail antes do `@`.
+
+O MVP não tem tela de cadastro público: há um único professor, criado aqui.
+
+Confira que o perfil foi criado pelo trigger:
+
+```sql
+select id, name, email from public.profiles;
+```
 
 ---
 
@@ -92,6 +122,11 @@ npm run dev       # servidor de desenvolvimento em http://localhost:5173
 npm run build     # build de produção em dist/
 npm run preview   # serve o dist/ localmente, para conferir o build
 ```
+
+> `npm run build` **falha de propósito** se `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY`
+> estiverem faltando. Sem elas, o Rollup consegue provar que o `createClient` nunca é alcançado,
+> descarta o `supabase-js` do bundle e o build passaria publicando um site quebrado. Falhar cedo
+> é melhor do que descobrir isso em produção.
 
 ---
 
@@ -164,7 +199,7 @@ A regra que mantém isso honesto, verificável com um `grep`:
 ### Nesta versão
 
 - [x] **Fase 1** — Fundação: Vite, estrutura, design tokens, layout responsivo, navegação, componentes
-- [ ] **Fase 2** — Banco, RLS e autenticação
+- [x] **Fase 2** — Banco, RLS e autenticação: 10 tabelas, políticas, triggers, login/logout, proteção de páginas
 - [ ] **Fase 3** — Alunos: CRUD, busca, perfil, situação financeira
 - [ ] **Fase 4** — Turmas: CRUD, horários, matrícula
 - [ ] **Fase 5** — Agenda: calendário e sessões de aula
