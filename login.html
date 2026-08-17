@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>Entrar · Beach Tennis</title>
+    <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/variables.css" />
+    <link rel="stylesheet" href="/css/reset.css" />
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/responsive.css" />
+  </head>
+  <body>
+    <main class="auth">
+      <div class="auth__card">
+        <div class="auth__brand">
+          <div class="sidebar__logo">BT</div>
+          <div>
+            <p class="sidebar__brand-name">Beach Tennis</p>
+            <p class="sidebar__brand-tagline">Gestão de aulas</p>
+          </div>
+        </div>
+
+        <h1 class="auth__title">Entrar</h1>
+        <p class="auth__subtitle text-muted">Acesse com seu e-mail e senha.</p>
+
+        <form class="form" id="login-form" novalidate>
+          <div class="field">
+            <label class="field__label" for="email">E-mail</label>
+            <input
+              class="input"
+              type="email"
+              id="email"
+              name="email"
+              autocomplete="email"
+              inputmode="email"
+              placeholder="voce@exemplo.com"
+              required
+            />
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="password">Senha</label>
+            <input
+              class="input"
+              type="password"
+              id="password"
+              name="password"
+              autocomplete="current-password"
+              placeholder="Sua senha"
+              required
+            />
+          </div>
+
+          <p class="field__error hidden" id="login-error" role="alert"></p>
+
+          <button class="btn btn--primary btn--block" type="submit" id="login-submit">
+            Entrar
+          </button>
+        </form>
+      </div>
+    </main>
+
+    <!-- FASE 2: /js/auth.js assume este formulário. -->
+    <script type="module" src="/js/login.js"></script>
+  </body>
+</html>

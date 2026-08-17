@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>Beach Tennis · Gestão de aulas</title>
+    <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/variables.css" />
+    <link rel="stylesheet" href="/css/reset.css" />
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+  </head>
+  <body>
+    <noscript>Este sistema precisa de JavaScript habilitado.</noscript>
+    <div class="loading-block">
+      <div class="spinner"></div>
+      <span>Carregando...</span>
+    </div>
+
+    <script type="module">
+      // Porta de entrada: manda para o dashboard ou para o login.
+      // FASE 2: a decisão passa a depender da sessão do Supabase.
+      window.location.replace('/pages/dashboard.html');
+    </script>
+  </body>
+</html>
