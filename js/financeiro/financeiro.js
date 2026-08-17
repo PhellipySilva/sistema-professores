@@ -30,7 +30,11 @@ export function recentReferenceMonths(todayIso = todayISO(), count = STATUS_WIND
 
 /**
  * Data de vencimento de um mês de referência, respeitando due_day.
- * due_day é sempre 1–28 (constraint do banco), então nunca estoura o mês.
+ *
+ * due_day vai de 1 a 31. Quando o dia não existe no mês, o vencimento cai no
+ * último dia dele: vencimento 31 vira 28 em fevereiro (29 em ano bissexto) e
+ * 30 em abril. É por isso que o banco não precisa proibir 29, 30 e 31 — o
+ * problema é de cálculo, não de cadastro.
  */
 export function dueDateForMonth(referenceMonthIso, dueDay) {
   const [year, month] = referenceMonthIso.split('-').map(Number);
@@ -94,5 +98,5 @@ export function suggestedDueDate(referenceMonthIso, dueDay) {
 }
 
 export function isValidDueDay(dueDay) {
-  return Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 28;
+  return Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31;
 }

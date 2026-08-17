@@ -204,7 +204,7 @@ Criado automaticamente por trigger em `auth.users` (item 6).
 | category | text NOT NULL | `CHECK (category IN ('kids','adulto'))` |
 | guardian_name | text | obrigatório na UI quando `category='kids'` |
 | monthly_fee_cents | integer | `CHECK (> 0)`, nullable |
-| due_day | smallint | `CHECK (BETWEEN 1 AND 28)` |
+| due_day | smallint | `CHECK (BETWEEN 1 AND 31)` — ampliado por `0004_due_day_31.sql` |
 | created_at / updated_at | timestamptz | |
 | | | `UNIQUE (id, user_id)` ← alvo das FKs compostas |
 
@@ -480,7 +480,7 @@ a seção 42 proíbe consulta por linha.
 
 **Validação (`utils/validators.js`):** nome obrigatório; categoria em `kids|adulto`;
 `guardian_name` obrigatório quando `kids`; telefone opcional mas normalizado; mensalidade > 0;
-`due_day` entre 1 e 28 (evita o problema de dia 29–31 em fevereiro).
+`due_day` entre 1 e 31 (dias que não existem no mês caem no último dia, no cálculo do vencimento).
 
 ---
 
@@ -789,10 +789,12 @@ seção 9 descreve (excluir com confirmação), mas é irreversível.
 O modelo N:N permite. A UI do MVP mostra "turma atual" no singular. Se um aluno estiver em duas
 turmas, a tela mostra as duas — só o texto da spec presume uma. Sem impacto no banco.
 
-### 17.8 — `due_day` limitado a 28
-Evita o buraco de "dia 31 em fevereiro". Se você precisar de dia 30/31, a regra passa a ser
-`min(due_day, último dia do mês)` — já está prevista no pseudocódigo do item 14, mas o `CHECK`
-precisaria afrouxar para 31.
+### 17.8 — `due_day` de 1 a 31 ✅ resolvido
+O schema original limitava a 28 para evitar "dia 31 de fevereiro". A restrição estava no lugar
+errado: impedia o professor de registrar a realidade (mensalidade que vence dia 30) para evitar um
+caso que o cálculo já tratava. `0004_due_day_31.sql` afrouxou o `CHECK` para 1–31, e
+`dueDateForMonth` puxa para o último dia quando o dia não existe no mês — 31 vira 28 em fevereiro
+(29 em bissexto) e 30 em abril. Coberto por 8 casos de teste.
 
 ### 17.9 — Chave anônima visível no bundle
 É o funcionamento oficial do Supabase e a seção 32 já autoriza. Depende **inteiramente** de o RLS

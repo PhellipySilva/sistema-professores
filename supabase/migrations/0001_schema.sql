@@ -58,7 +58,8 @@ create table public.students (
 
   -- Mensalidade fica no próprio aluno (spec, seção 11): menos tabelas, menos joins.
   monthly_fee_cents integer check (monthly_fee_cents > 0),
-  -- Limitado a 28 para não existir "dia 31 de fevereiro".
+  -- Limitado a 28 aqui; 0004_due_day_31.sql amplia para 31. O caso do
+  -- "dia 31 de fevereiro" é tratado no cálculo, não com uma restrição.
   due_day           smallint check (due_day between 1 and 28),
 
   created_at        timestamptz not null default now(),

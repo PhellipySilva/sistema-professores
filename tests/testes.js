@@ -4,8 +4,9 @@ import {
   startOfMonth, toISODate, todayISO,
 } from '../js/utils/dates.js';
 import { calendarWeeks, mergeOccurrences, nextOccurrences, plannedOccurrencesForMonth } from '../js/agenda/ocorrencias.js';
-import { dueDateForMonth, paymentStatus, recentReferenceMonths, studentFinancialStatus } from '../js/financeiro/financeiro.js';
+import { dueDateForMonth, isValidDueDay, paymentStatus, recentReferenceMonths, studentFinancialStatus } from '../js/financeiro/financeiro.js';
 import { parseCurrencyToCents, formatCurrency, formatPhone } from '../js/utils/formatters.js';
+import { validateDueDay } from '../js/utils/validators.js';
 
 const results = [];
 const eq = (name, actual, expected) => {
@@ -73,6 +74,21 @@ eq('proximas com grade vazia', nextOccurrences([], '2026-08-17', 3), []);
 /* ---------- FINANCEIRO ---------- */
 eq('dueDate dia 10', dueDateForMonth('2026-08-01', 10), '2026-08-10');
 eq('dueDate dia 28 em fevereiro', dueDateForMonth('2026-02-01', 28), '2026-02-28');
+// due_day de 1 a 31: meses curtos puxam para o ultimo dia
+eq('dueDate dia 31 em agosto (31 dias)', dueDateForMonth('2026-08-01', 31), '2026-08-31');
+eq('dueDate dia 31 em abril (30 dias)', dueDateForMonth('2026-04-01', 31), '2026-04-30');
+eq('dueDate dia 31 em fevereiro comum', dueDateForMonth('2026-02-01', 31), '2026-02-28');
+eq('dueDate dia 31 em fevereiro bissexto', dueDateForMonth('2028-02-01', 31), '2028-02-29');
+eq('dueDate dia 30 em fevereiro', dueDateForMonth('2026-02-01', 30), '2026-02-28');
+eq('dueDate dia 29 em fevereiro bissexto', dueDateForMonth('2028-02-01', 29), '2028-02-29');
+eq('dueDate dia 1', dueDateForMonth('2026-08-01', 1), '2026-08-01');
+eq('validateDueDay aceita 31', validateDueDay('31'), null);
+eq('validateDueDay aceita 1', validateDueDay('1'), null);
+eq('validateDueDay recusa 32', validateDueDay('32'), 'O dia de vencimento deve ser entre 1 e 31.');
+eq('validateDueDay recusa 0', validateDueDay('0'), 'O dia de vencimento deve ser entre 1 e 31.');
+eq('validateDueDay aceita vazio (opcional)', validateDueDay(''), null);
+eq('isValidDueDay 31', isValidDueDay(31), true);
+eq('isValidDueDay 32', isValidDueDay(32), false);
 eq('recentReferenceMonths', recentReferenceMonths('2026-08-17'), ['2026-06-01', '2026-07-01', '2026-08-01']);
 eq('pagamento pago', paymentStatus({ paid_date: '2026-08-05', due_date: '2026-08-10' }, '2026-08-17'), 'paid');
 eq('pagamento atrasado', paymentStatus({ paid_date: null, due_date: '2026-08-10' }, '2026-08-17'), 'overdue');

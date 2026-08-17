@@ -83,6 +83,7 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 1 | `0001_schema.sql` | Cria as 10 tabelas, constraints e índices |
 | 2 | `0002_rls.sql` | Liga o Row Level Security e cria as políticas |
 | 3 | `0003_triggers.sql` | `updated_at` automático e criação do perfil |
+| 4 | `0004_due_day_31.sql` | Permite dia de vencimento de 1 a 31 |
 
 Para conferir que deu certo, rode:
 

@@ -156,8 +156,8 @@ export function openStudentModal({ student, onSave }) {
       placeholder: '10',
       inputmode: 'numeric',
       min: 1,
-      max: 28,
-      hint: 'Entre 1 e 28.',
+      max: 31,
+      hint: 'Entre 1 e 31. Em meses mais curtos, vence no último dia.',
     }),
   ];
 

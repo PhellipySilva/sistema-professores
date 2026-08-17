@@ -52,13 +52,19 @@ export function validateMonthlyFee(input) {
   return null;
 }
 
-/** @param {string} input  Ex.: "10" */
+/**
+ * Dia do mês em que a mensalidade vence.
+ * Aceita 1 a 31: meses mais curtos são resolvidos no cálculo do vencimento
+ * (`dueDateForMonth`), que puxa para o último dia do mês.
+ *
+ * @param {string} input  Ex.: "10"
+ */
 export function validateDueDay(input) {
   if (!input || input.trim() === '') return null; // opcional
 
   const day = Number(input);
-  if (!Number.isInteger(day) || day < 1 || day > 28) {
-    return 'O dia de vencimento deve ser entre 1 e 28.';
+  if (!Number.isInteger(day) || day < 1 || day > 31) {
+    return 'O dia de vencimento deve ser entre 1 e 31.';
   }
   return null;
 }
