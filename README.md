@@ -121,6 +121,19 @@ Confira que o perfil foi criado pelo trigger:
 select id, name, email from public.profiles;
 ```
 
+### 5. Dados de teste (opcional)
+
+Para ver o sistema com conteúdo antes de cadastrar os seus:
+
+| Arquivo | O que faz |
+|---|---|
+| `supabase/seed.sql` | Cria 6 alunos, 3 turmas, aulas com chamada, pagamentos e planejamentos |
+| `supabase/seed-cleanup.sql` | Remove tudo isso |
+
+Todo dado fictício tem o prefixo `[teste]` no nome, então a limpeza é precisa e
+não toca no que é seu. O seed inclui casos de propósito: aluno em dia, aluno
+atrasado, aluno sem mensalidade e uma reposição pendente.
+
 ---
 
 ## Como executar localmente
@@ -129,7 +142,22 @@ select id, name, email from public.profiles;
 npm run dev       # servidor de desenvolvimento em http://localhost:5173
 npm run build     # build de produção em dist/
 npm run preview   # serve o dist/ localmente, para conferir o build
+npm test          # abre a suíte de testes no navegador
 ```
+
+### Testes
+
+Sem framework e sem dependência: são duas páginas que rodam no navegador e
+imprimem o resultado. Não entram no build de produção.
+
+| Página | O que cobre |
+|---|---|
+| `/tests/` | Datas e fusos, ocorrências de aula, status financeiro, dinheiro (52 casos) |
+| `/tests/render.html` | Todos os componentes de interface montados com dados falsos (44 casos) |
+
+Rode antes de mexer em `utils/dates.js`, `agenda/ocorrencias.js` ou
+`financeiro/financeiro.js` — são as três peças onde um erro passa despercebido
+e corrompe dado de verdade.
 
 > `npm run build` **falha de propósito** se `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY`
 > estiverem faltando. Sem elas, o Rollup consegue provar que o `createClient` nunca é alcançado,
@@ -208,15 +236,15 @@ A regra que mantém isso honesto, verificável com um `grep`:
 
 - [x] **Fase 1** — Fundação: Vite, estrutura, design tokens, layout responsivo, navegação, componentes
 - [x] **Fase 2** — Banco, RLS e autenticação: 10 tabelas, políticas, triggers, login/logout, proteção de páginas
-- [ ] **Fase 3** — Alunos: CRUD, busca, perfil, situação financeira
-- [ ] **Fase 4** — Turmas: CRUD, horários, matrícula
-- [ ] **Fase 5** — Agenda: calendário e sessões de aula
-- [ ] **Fase 6** — Frequência: chamada e histórico
-- [ ] **Fase 7** — Reposições
-- [ ] **Fase 8** — Financeiro: mensalidade, pagamentos, status
-- [ ] **Fase 9** — Planejamentos
-- [ ] **Fase 10** — Dashboard com dados reais
-- [ ] **Fase 11** — Refinamento: mobile, acessibilidade, performance, revisão de RLS
+- [x] **Fase 3** — Alunos: listagem, busca, cadastro, edição, exclusão, perfil, situação financeira
+- [x] **Fase 4** — Turmas: CRUD, horários em vários dias, matrícula e remoção de alunos
+- [x] **Fase 5** — Agenda: calendário mensal, aulas previstas e materialização sob demanda
+- [x] **Fase 6** — Frequência: chamada com um toque, histórico mensal e percentual
+- [x] **Fase 7** — Reposições: da falta ao agendamento e à conclusão
+- [x] **Fase 8** — Financeiro: mensalidade, registro de pagamento, status calculado
+- [x] **Fase 9** — Planejamentos: CRUD agrupado por mês
+- [x] **Fase 10** — Dashboard: indicadores reais, aulas do dia, atrasados, vencimentos, atalhos
+- [x] **Fase 11** — Refinamento: mobile, acessibilidade, estados de carga/erro/vazio, testes
 
 ### Fora deste MVP
 
