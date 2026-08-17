@@ -156,3 +156,33 @@
     padding: 0;
   }
 }
+
+/* ---------- Ajustes dos módulos por tamanho de tela ---------- */
+
+@media (max-width: 640px) {
+  /* Na chamada, o rótulo do botão de pagamento vira só o ícone. */
+  .btn__label {
+    display: none;
+  }
+}
+
+@media (min-width: 641px) {
+  .shortcut-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .calendar__cell {
+    min-height: 48px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .shortcut-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .attendance-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
