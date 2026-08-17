@@ -8,7 +8,8 @@
 
 import { studentCard, openStudentModal, studentSummaryCard, searchBar } from '../js/alunos/alunos-ui.js';
 import { attendanceHistorySection, makeupHistorySection, summarizeAttendanceByMonth } from '../js/alunos/aluno-historico.js';
-import { classCard, scheduleSummary } from '../js/turmas/turmas-ui.js';
+import { classCard, openClassModal, scheduleSummary } from '../js/turmas/turmas-ui.js';
+import { buildStudentPicker } from '../js/turmas/aluno-picker.js';
 import { attendanceRow, attendanceSummary, countStatuses } from '../js/agenda/frequencia.js';
 import { paymentHistorySection, paymentBadge } from '../js/financeiro/financeiro-ui.js';
 import { emptyState, errorState } from '../js/components/empty-state.js';
@@ -307,6 +308,176 @@ await checkAsync('ultimo pagamento sem mensalidade e recusado', async () => {
 
   if (chamou) return 'salvou sem mensalidade';
   if (!erroVisivel) return 'nao explicou por que recusou';
+  return true;
+});
+
+/* ---------- Seletor de alunos com dias (turma segunda + quinta) ---------- */
+const alunosDaTurma = [
+  { id: 'a1', name: 'João Silva', category: 'adulto' },
+  { id: 'a2', name: 'Maria Souza', category: 'kids' },
+  { id: 'a3', name: 'Pedro Almeida', category: 'adulto' },
+];
+const SEG_QUI = [1, 4];
+
+const contar = (picker, seletor) => picker.element.querySelectorAll(seletor).length;
+
+check('picker lista todos os alunos', () => {
+  const p = buildStudentPicker({ students: alunosDaTurma, classDays: SEG_QUI, enrollments: [] });
+  return contar(p, '.picker__row') === 3 || `veio ${contar(p, '.picker__row')}`;
+});
+check('picker comeca sem ninguem marcado', () => {
+  const p = buildStudentPicker({ students: alunosDaTurma, classDays: SEG_QUI, enrollments: [] });
+  return contar(p, '.picker__checkbox:checked') === 0 || 'veio marcado';
+});
+check('picker read vazio quando nada marcado', () => {
+  const p = buildStudentPicker({ students: alunosDaTurma, classDays: SEG_QUI, enrollments: [] });
+  return JSON.stringify(p.read()) === '[]' || JSON.stringify(p.read());
+});
+check('marcar aluno o coloca em todos os dias (null)', () => {
+  const p = buildStudentPicker({ students: alunosDaTurma, classDays: SEG_QUI, enrollments: [] });
+  const box = p.element.querySelectorAll('.picker__checkbox')[0];
+  box.checked = true;
+  box.dispatchEvent(new Event('change'));
+  const lido = p.read();
+  return (lido.length === 1 && lido[0].student_id === 'a1' && lido[0].days_of_week === null)
+    || JSON.stringify(lido);
+});
+check('chips de dia aparecem so para quem esta marcado', () => {
+  const p = buildStudentPicker({ students: alunosDaTurma, classDays: SEG_QUI, enrollments: [] });
+  const antes = contar(p, '.picker__day');
+  const box = p.element.querySelectorAll('.picker__checkbox')[0];
+  box.checked = true;
+  box.dispatchEvent(new Event('change'));
+  const depois = contar(p, '.picker__day');
+  return (antes === 0 && depois === 2) || `antes=${antes} depois=${depois}`;
+});
+check('desmarcar um dia gera restricao', () => {
+  const p = buildStudentPicker({
+    students: alunosDaTurma, classDays: SEG_QUI,
+    enrollments: [{ student_id: 'a1', days_of_week: null }],
+  });
+  // O segundo chip do primeiro aluno e a quinta.
+  p.element.querySelectorAll('.picker__day')[1].click();
+  const lido = p.read();
+  return JSON.stringify(lido) === JSON.stringify([{ student_id: 'a1', days_of_week: [1] }])
+    || JSON.stringify(lido);
+});
+check('tirar o ultimo dia desmarca o aluno', () => {
+  const p = buildStudentPicker({
+    students: alunosDaTurma, classDays: SEG_QUI,
+    enrollments: [{ student_id: 'a1', days_of_week: [1] }],
+  });
+  p.element.querySelector('.picker__day--on').click();
+  return JSON.stringify(p.read()) === '[]' || JSON.stringify(p.read());
+});
+check('picker carrega matriculas existentes', () => {
+  const p = buildStudentPicker({
+    students: alunosDaTurma, classDays: SEG_QUI,
+    enrollments: [{ student_id: 'a1', days_of_week: null }, { student_id: 'a3', days_of_week: [4] }],
+  });
+  const lido = p.read().sort((x, y) => x.student_id.localeCompare(y.student_id));
+  return JSON.stringify(lido) === JSON.stringify([
+    { student_id: 'a1', days_of_week: null },
+    { student_id: 'a3', days_of_week: [4] },
+  ]) || JSON.stringify(lido);
+});
+check('setClassDays: dia novo entra marcado para todos', () => {
+  const p = buildStudentPicker({
+    students: alunosDaTurma, classDays: SEG_QUI,
+    enrollments: [{ student_id: 'a1', days_of_week: [1] }],
+  });
+  p.setClassDays([1, 4, 5]);
+  const lido = p.read();
+  // a1 tinha so segunda; a sexta entra marcada -> [1, 5]
+  return JSON.stringify(lido) === JSON.stringify([{ student_id: 'a1', days_of_week: [1, 5] }])
+    || JSON.stringify(lido);
+});
+check('setClassDays: remover dia nao deixa aluno orfao', () => {
+  const p = buildStudentPicker({
+    students: alunosDaTurma, classDays: SEG_QUI,
+    enrollments: [{ student_id: 'a3', days_of_week: [4] }],
+  });
+  p.setClassDays([1]); // a quinta deixou de existir
+  const lido = p.read();
+  return (lido.length === 1 && lido[0].student_id === 'a3' && lido[0].days_of_week === null)
+    || JSON.stringify(lido);
+});
+check('turma de um dia so nao mostra chips', () => {
+  const p = buildStudentPicker({
+    students: alunosDaTurma, classDays: [1],
+    enrollments: [{ student_id: 'a1', days_of_week: null }],
+  });
+  return contar(p, '.picker__day') === 0 || 'mostrou chips com um dia so';
+});
+check('picker conta os selecionados', () => {
+  const p = buildStudentPicker({
+    students: alunosDaTurma, classDays: SEG_QUI,
+    enrollments: [{ student_id: 'a1', days_of_week: null }, { student_id: 'a2', days_of_week: null }],
+  });
+  return has(p.element, '2 alunos selecionados');
+});
+check('picker sem alunos cadastrados avisa', () => {
+  const p = buildStudentPicker({ students: [], classDays: SEG_QUI, enrollments: [] });
+  return has(p.element, 'ainda não tem alunos cadastrados');
+});
+
+/* ---------- Modal de turma com alunos ---------- */
+check('modal de turma sem students nao mostra o seletor', () => {
+  const modal = openClassModal({ turma: null, onSave: async () => {} });
+  const ok = modal.element.querySelector('.picker') === null;
+  modal.close();
+  return ok || 'mostrou o seletor sem receber alunos';
+});
+check('modal de turma com students mostra o seletor', () => {
+  const modal = openClassModal({ turma: null, students: alunosDaTurma, onSave: async () => {} });
+  const ok = Boolean(modal.element.querySelector('.picker'));
+  modal.close();
+  return ok || 'nao mostrou o seletor';
+});
+
+await checkAsync('criar turma entrega horarios e matriculas juntos', async () => {
+  let recebido = null;
+
+  const modal = openClassModal({
+    turma: null,
+    students: alunosDaTurma,
+    onSave: async (payload) => { recebido = payload; },
+  });
+
+  const form = modal.element.querySelector('form');
+  form.elements.name.value = 'Adulto Noite';
+  form.elements.category.value = 'adulto';
+  form.elements.start_time.value = '19:00';
+  form.elements.duration.value = '60';
+
+  // Segunda e quinta
+  for (const input of form.querySelectorAll('input[name="days"]')) {
+    input.checked = ['1', '4'].includes(input.value);
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // João em tudo, Pedro só na quinta
+  const boxes = form.querySelectorAll('.picker__checkbox');
+  boxes[0].checked = true; boxes[0].dispatchEvent(new Event('change'));
+  boxes[2].checked = true; boxes[2].dispatchEvent(new Event('change'));
+
+  const pedroRow = [...form.querySelectorAll('.picker__row')].find((row) => row.textContent.includes('Pedro'));
+  pedroRow.querySelectorAll('.picker__day')[0].click(); // tira a segunda
+
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  modal.close();
+
+  if (!recebido) return 'onSave nao foi chamado';
+  if (recebido.schedules.length !== 2) return `horarios: ${recebido.schedules.length}`;
+  if (recebido.schedules[0].end_time !== '20:00:00') return `fim: ${recebido.schedules[0].end_time}`;
+
+  const matriculas = recebido.enrollments.sort((a, b) => a.student_id.localeCompare(b.student_id));
+  const esperado = [
+    { student_id: 'a1', days_of_week: null },
+    { student_id: 'a3', days_of_week: [4] },
+  ];
+  if (JSON.stringify(matriculas) !== JSON.stringify(esperado)) return JSON.stringify(matriculas);
   return true;
 });
 

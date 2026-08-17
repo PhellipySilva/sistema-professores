@@ -84,6 +84,7 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 2 | `0002_rls.sql` | Liga o Row Level Security e cria as políticas |
 | 3 | `0003_triggers.sql` | `updated_at` automático e criação do perfil |
 | 4 | `0004_due_day_31.sql` | Permite dia de vencimento de 1 a 31 |
+| 5 | `0005_enrollment_days.sql` | Aluno matriculado em dias específicos da turma |
 
 Para conferir que deu certo, rode:
 
@@ -153,12 +154,12 @@ imprimem o resultado. Não entram no build de produção.
 
 | Página | O que cobre |
 |---|---|
-| `/tests/` | Datas e fusos, ocorrências de aula, status financeiro, dinheiro (52 casos) |
-| `/tests/render.html` | Todos os componentes de interface montados com dados falsos (44 casos) |
+| `/tests/` | Datas e fusos, ocorrências de aula, matrícula por dia, status financeiro, dinheiro (108 casos) |
+| `/tests/render.html` | Todos os componentes de interface montados com dados falsos (70 casos) |
 
-Rode antes de mexer em `utils/dates.js`, `agenda/ocorrencias.js` ou
-`financeiro/financeiro.js` — são as três peças onde um erro passa despercebido
-e corrompe dado de verdade.
+Rode antes de mexer em `utils/dates.js`, `agenda/ocorrencias.js`,
+`turmas/matriculas.js` ou `financeiro/financeiro.js` — são as quatro peças onde
+um erro passa despercebido e corrompe dado de verdade.
 
 > `npm run build` **falha de propósito** se `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY`
 > estiverem faltando. Sem elas, o Rollup consegue provar que o `createClient` nunca é alcançado,

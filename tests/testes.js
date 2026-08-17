@@ -5,6 +5,10 @@ import {
 } from '../js/utils/dates.js';
 import { calendarWeeks, mergeOccurrences, nextOccurrences, plannedOccurrencesForMonth } from '../js/agenda/ocorrencias.js';
 import {
+  attendsDay, classDaysOf, expandEnrollmentDays, formatEnrollmentDays,
+  normalizeEnrollmentDays, reconcileDays, studentsForDay,
+} from '../js/turmas/matriculas.js';
+import {
   billingStartDate, buildInitialPayment, dueDateForMonth, enrollmentMonth, isValidDueDay,
   paymentStatus, recentReferenceMonths, selectableReferenceMonths, studentFinancialStatus,
 } from '../js/financeiro/financeiro.js';
@@ -74,6 +78,56 @@ eq('mescla: cancelada some', mergeOccurrences(planned, canceled).length, 8);
 const next = nextOccurrences(schedules, '2026-08-17', 3);
 eq('proximas 3 aulas', next.map((o) => o.date), ['2026-08-17', '2026-08-19', '2026-08-24']);
 eq('proximas com grade vazia', nextOccurrences([], '2026-08-17', 3), []);
+
+/* ---------- MATRICULA POR DIA ---------- */
+// Convencao: days_of_week null = frequenta TODOS os dias da turma
+eq('sem restricao frequenta qualquer dia', attendsDay({ days_of_week: null }, 1), true);
+eq('array vazio tambem e sem restricao', attendsDay({ days_of_week: [] }, 4), true);
+eq('restrito a segunda vai na segunda', attendsDay({ days_of_week: [1] }, 1), true);
+eq('restrito a segunda nao vai na quinta', attendsDay({ days_of_week: [1] }, 4), false);
+
+const matriculados = [
+  { id: 'a1', name: 'Todos', days_of_week: null },
+  { id: 'a2', name: 'So segunda', days_of_week: [1] },
+  { id: 'a3', name: 'So quinta', days_of_week: [4] },
+  { id: 'a4', name: 'Ambos explicito', days_of_week: [1, 4] },
+];
+eq('chamada de segunda', studentsForDay(matriculados, 1).map((s) => s.id), ['a1', 'a2', 'a4']);
+eq('chamada de quinta', studentsForDay(matriculados, 4).map((s) => s.id), ['a1', 'a3', 'a4']);
+eq('chamada de um dia sem ninguem restrito', studentsForDay(matriculados, 3).map((s) => s.id), ['a1']);
+
+// normalize: marcou todos os dias -> null, para o aluno acompanhar dias novos
+eq('todos os dias marcados viram null', normalizeEnrollmentDays([1, 4], [1, 4]), null);
+eq('subconjunto e preservado', normalizeEnrollmentDays([4], [1, 4]), [4]);
+eq('ordem e normalizada', normalizeEnrollmentDays([4, 1], [1, 4, 5]), [1, 4]);
+eq('dia fora da turma e descartado', normalizeEnrollmentDays([1, 6], [1, 4]), [1]);
+eq('nenhum dia vira null', normalizeEnrollmentDays([], [1, 4]), null);
+eq('turma de um dia so sempre vira null', normalizeEnrollmentDays([1], [1]), null);
+
+// expand: o inverso, para preencher a interface
+eq('null expande para todos os dias da turma', expandEnrollmentDays(null, [1, 4]), [1, 4]);
+eq('array expande para ele mesmo', expandEnrollmentDays([4], [1, 4]), [4]);
+eq('expand ignora dia que a turma nao tem', expandEnrollmentDays([1, 6], [1, 4]), [1]);
+
+// reconcile: turma muda de dias, escolhas antigas sao preservadas
+eq('dia novo entra marcado', reconcileDays([1], [1, 4], [1, 4, 5]), [1, 5]);
+eq('dia removido some da escolha', reconcileDays([1, 4], [1, 4], [1]), [1]);
+eq('escolha anterior e mantida', reconcileDays([4], [1, 4], [1, 4]), [4]);
+eq('troca completa de dias marca tudo', reconcileDays([1], [1, 4], [2, 3]), [2, 3]);
+
+eq('formata todos os dias', formatEnrollmentDays(null, [1, 4]), 'Todos os dias');
+eq('formata restricao', formatEnrollmentDays([1], [1, 4]), 'Só Segunda');
+eq('formata restricao dupla', formatEnrollmentDays([1, 3], [1, 3, 5]), 'Só Segunda e Quarta');
+eq('array completo tambem e todos os dias', formatEnrollmentDays([1, 4], [1, 4]), 'Todos os dias');
+
+eq('classDaysOf tira duplicados e ordena', classDaysOf({
+  class_schedules: [
+    { day_of_week: 4, start_time: '07:00:00' },
+    { day_of_week: 1, start_time: '07:00:00' },
+    { day_of_week: 4, start_time: '19:00:00' },
+  ],
+}), [1, 4]);
+eq('classDaysOf de turma sem horario', classDaysOf({ class_schedules: [] }), []);
 
 /* ---------- FINANCEIRO ---------- */
 eq('dueDate dia 10', dueDateForMonth('2026-08-01', 10), '2026-08-10');
