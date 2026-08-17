@@ -1,20 +1,176 @@
-/* Controller da página "aula".
- *
- * FASE 1: a página existe, carrega o shell e mostra seu estado vazio.
- * O conteúdo real chega na fase indicada na mensagem abaixo.
+/* Chamada de uma aula (spec, seções 18 e 19). */
+
+import { handleError, initPage } from '../app.js';
+import { getSession } from '../api/sessions.js';
+import { listClassStudents } from '../api/classes.js';
+import { listAttendanceForSession, setAttendance } from '../api/attendance.js';
+import { listMakeupsForSession, updateMakeupStatus } from '../api/makeups.js';
+import { errorState } from '../components/empty-state.js';
+import { showLoading } from '../components/loading.js';
+import { toast } from '../components/toast.js';
+import { $, el, getQueryParam, render } from '../utils/dom.js';
+import { formatDateLongBR, formatTimeRange } from '../utils/dates.js';
+import { attendanceRow, attendanceSummary, countStatuses } from './frequencia.js';
+import { openMakeupModal } from '../reposicoes/reposicoes.js';
+
+const { user } = await initPage('aula');
+
+const sessionId = getQueryParam('id');
+const content = $('#page-content');
+const titleNode = $('#page-title');
+const subtitleNode = $('#page-subtitle');
+
+let session = null;
+let students = [];
+let guests = [];
+let statusByStudent = new Map();
+
+if (!sessionId) {
+  render(content, errorState({ message: 'Aula não informada.' }));
+} else {
+  await load();
+}
+
+async function load() {
+  showLoading(content, 'Carregando chamada...');
+
+  try {
+    session = await getSession(user.id, sessionId);
+
+    const [enrolled, records, makeups] = await Promise.all([
+      listClassStudents(user.id, session.class_id),
+      listAttendanceForSession(user.id, sessionId),
+      listMakeupsForSession(user.id, sessionId),
+    ]);
+
+    students = enrolled;
+    guests = makeups.filter((makeup) => makeup.students).map((makeup) => ({
+      ...makeup.students,
+      makeupId: makeup.id,
+    }));
+
+    statusByStudent = new Map(records.map((record) => [record.student_id, record.status]));
+
+    renderCall();
+  } catch (error) {
+    handleError(error, 'Não foi possível carregar a chamada.');
+    render(content, errorState({ message: 'Não foi possível carregar a chamada.', onRetry: load }));
+  }
+}
+
+function renderCall() {
+  const className = session.classes?.name ?? 'Aula';
+  document.title = `${className} · Chamada`;
+  titleNode.textContent = className;
+
+  subtitleNode.textContent = `${formatDateLongBR(session.session_date)} · ${formatTimeRange(session.start_time, session.end_time)}`;
+  subtitleNode.classList.remove('hidden');
+
+  const blocks = [summaryBlock()];
+
+  if (students.length === 0) {
+    blocks.push(
+      el('p', {
+        class: 'text-muted text-sm',
+        text: 'Nenhum aluno matriculado nesta turma. Adicione alunos na página da turma.',
+      }),
+    );
+  } else {
+    blocks.push(
+      el('div', { class: 'attendance-list' }, students.map((student) =>
+        attendanceRow({
+          student,
+          status: statusByStudent.get(student.id) ?? null,
+          onSelect: saveStatus,
+          onMakeup: openMakeup,
+        }),
+      )),
+    );
+  }
+
+  if (guests.length > 0) {
+    blocks.push(
+      el('section', { class: 'section' }, [
+        el('h2', { class: 'section__title', text: 'Alunos em reposição' }),
+        el('div', { class: 'attendance-list' }, guests.map((guest) =>
+          attendanceRow({
+            student: guest,
+            status: statusByStudent.get(guest.id) ?? null,
+            isGuest: true,
+            onSelect: (studentId, status) => saveGuestStatus(guest, studentId, status),
+          }),
+        )),
+      ]),
+    );
+  }
+
+  render(content, blocks);
+}
+
+function summaryBlock() {
+  const counts = countStatuses(statusByStudent, students.length);
+
+  return el('div', { class: 'card row-between' }, [
+    el('div', {}, [
+      el('p', { class: 'card__title', text: 'Chamada' }),
+      el('div', { id: 'attendance-summary' }, attendanceSummary(counts)),
+    ]),
+    el('a', {
+      class: 'btn btn--ghost btn--sm',
+      href: `/pages/turma.html?id=${session.class_id}`,
+      text: 'Ver turma',
+    }),
+  ]);
+}
+
+function openMakeup(student) {
+  openMakeupModal({
+    userId: user.id,
+    student,
+    originalSession: session,
+    onSaved: load,
+  });
+}
+
+/* ============================================================
+   Gravação
+   ============================================================ */
+
+/**
+ * Um toque = um upsert. Devolve true/false para o componente saber se mantém
+ * a pintura otimista ou reverte. Não redesenha a página: a linha se atualiza
+ * sozinha, e só o resumo do topo é trocado.
  */
+async function saveStatus(studentId, status) {
+  try {
+    await setAttendance(user.id, { session_id: sessionId, student_id: studentId, status });
+  } catch (error) {
+    toast.error(handleError(error, 'Não foi possível salvar a presença. Tente de novo.'));
+    return false;
+  }
 
-import { initPage } from '../app.js';
-import { emptyState } from '../components/empty-state.js';
-import { $, render } from '../utils/dom.js';
+  statusByStudent.set(studentId, status);
+  refreshSummary();
+  return true;
+}
 
-await initPage('aula');
+/** Marcar presença de um convidado conclui a reposição dele. */
+async function saveGuestStatus(guest, studentId, status) {
+  const ok = await saveStatus(studentId, status);
+  if (!ok) return false;
 
-render(
-  $('#page-content'),
-  emptyState({
-    iconName: 'check',
-    title: 'Chamada',
-    message: 'A lista de presença da aula chega na Fase 6.',
-  }),
-);
+  if (status === 'present' || status === 'makeup') {
+    try {
+      await updateMakeupStatus(user.id, guest.makeupId, 'completed');
+    } catch (error) {
+      handleError(error, 'A presença foi salva, mas a reposição não foi marcada como concluída.');
+    }
+  }
+  return true;
+}
+
+function refreshSummary() {
+  const counts = countStatuses(statusByStudent, students.length);
+  const target = $('#attendance-summary');
+  if (target) render(target, attendanceSummary(counts));
+}
