@@ -38,7 +38,11 @@ export async function getClass(userId, classId) {
   return { ...data, class_schedules: sortSchedules(data.class_schedules ?? []) };
 }
 
-export async function createClass(userId, { name, category, schedules }) {
+/**
+ * @param {object[]} [input.enrollments]  [{ student_id, days_of_week }] — matrícula
+ *                                        junto com a criação da turma
+ */
+export async function createClass(userId, { name, category, schedules, enrollments }) {
   const { data: created, error } = await supabase
     .from('classes')
     .insert({ name, category, user_id: userId })
@@ -47,13 +51,16 @@ export async function createClass(userId, { name, category, schedules }) {
 
   if (error) throw error;
 
-  if (schedules.length > 0) {
+  if (schedules?.length > 0) {
     await replaceSchedules(userId, created.id, schedules);
+  }
+  if (enrollments) {
+    await replaceEnrollments(userId, created.id, enrollments);
   }
   return created;
 }
 
-export async function updateClass(userId, classId, { name, category, schedules }) {
+export async function updateClass(userId, classId, { name, category, schedules, enrollments }) {
   const { error } = await supabase
     .from('classes')
     .update({ name, category })
@@ -64,6 +71,59 @@ export async function updateClass(userId, classId, { name, category, schedules }
 
   if (schedules) {
     await replaceSchedules(userId, classId, schedules);
+  }
+
+  if (enrollments) {
+    await replaceEnrollments(userId, classId, enrollments);
+  } else if (schedules) {
+    // Sem lista de matrículas, ainda é preciso ajustar quem tinha restrição de
+    // dia: tirar a quinta de uma turma deixaria quem só ia na quinta invisível
+    // em toda chamada, sem nenhum aviso.
+    await reconcileEnrollmentDays(userId, classId, schedules.map((item) => item.day_of_week));
+  }
+}
+
+/**
+ * Reajusta as restrições de dia depois que a grade da turma muda.
+ *
+ * Interseção entre o que o aluno frequentava e os dias que sobraram. Se a
+ * interseção ficar vazia (o dia dele deixou de existir), volta para null —
+ * frequenta todos os dias. Melhor devolver o aluno à turma do que sumir com ele.
+ */
+export async function reconcileEnrollmentDays(userId, classId, classDays) {
+  const remaining = [...new Set(classDays)].sort((a, b) => a - b);
+
+  const { data, error } = await supabase
+    .from('class_students')
+    .select('student_id, days_of_week')
+    .eq('user_id', userId)
+    .eq('class_id', classId)
+    .eq('active', true)
+    .not('days_of_week', 'is', null);
+
+  if (error) throw error;
+  if (!data || data.length === 0) return;
+
+  const updates = [];
+
+  for (const enrollment of data) {
+    const kept = remaining.filter((day) => enrollment.days_of_week.includes(day));
+    const next = kept.length === 0 || kept.length === remaining.length ? null : kept;
+
+    if (JSON.stringify(next) !== JSON.stringify(enrollment.days_of_week)) {
+      updates.push({ student_id: enrollment.student_id, days_of_week: next });
+    }
+  }
+
+  for (const update of updates) {
+    const { error: updateError } = await supabase
+      .from('class_students')
+      .update({ days_of_week: update.days_of_week })
+      .eq('user_id', userId)
+      .eq('class_id', classId)
+      .eq('student_id', update.student_id);
+
+    if (updateError) throw updateError;
   }
 }
 
@@ -123,7 +183,7 @@ export async function listAllSchedules(userId) {
 export async function listClassStudents(userId, classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('id, active, student_id, students (id, name, category, phone, guardian_name)')
+    .select('id, active, student_id, days_of_week, students (id, name, category, phone, guardian_name)')
     .eq('user_id', userId)
     .eq('class_id', classId)
     .eq('active', true);
@@ -131,7 +191,8 @@ export async function listClassStudents(userId, classId) {
   if (error) throw error;
 
   return data
-    .map((link) => ({ linkId: link.id, ...link.students }))
+    .filter((link) => link.students)
+    .map((link) => ({ linkId: link.id, days_of_week: link.days_of_week, ...link.students }))
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
 
@@ -154,17 +215,70 @@ export async function listClassesOfStudent(userId, studentId) {
     }));
 }
 
-export async function addStudentToClass(userId, classId, studentId) {
+/**
+ * @param {number[]|null} [daysOfWeek]  null = frequenta todos os dias da turma
+ */
+export async function addStudentToClass(userId, classId, studentId, daysOfWeek = null) {
   // upsert: se o aluno já esteve na turma e foi removido, reativa o vínculo
   // em vez de esbarrar na constraint unique (class_id, student_id).
   const { error } = await supabase
     .from('class_students')
     .upsert(
-      { user_id: userId, class_id: classId, student_id: studentId, active: true },
+      {
+        user_id: userId,
+        class_id: classId,
+        student_id: studentId,
+        days_of_week: daysOfWeek,
+        active: true,
+      },
       { onConflict: 'class_id,student_id' },
     );
 
   if (error) throw error;
+}
+
+export async function updateEnrollmentDays(userId, classId, studentId, daysOfWeek) {
+  const { error } = await supabase
+    .from('class_students')
+    .update({ days_of_week: daysOfWeek })
+    .eq('user_id', userId)
+    .eq('class_id', classId)
+    .eq('student_id', studentId);
+
+  if (error) throw error;
+}
+
+/**
+ * Substitui a lista inteira de matriculados da turma.
+ *
+ * Desativa todo mundo e reativa quem está na lista nova. Duas queries em vez de
+ * calcular o diff — a lista é pequena, e desativar (em vez de apagar) preserva
+ * o histórico de frequência de quem sai.
+ *
+ * @param {{student_id: string, days_of_week: number[]|null}[]} enrollments
+ */
+export async function replaceEnrollments(userId, classId, enrollments) {
+  const { error: deactivateError } = await supabase
+    .from('class_students')
+    .update({ active: false })
+    .eq('user_id', userId)
+    .eq('class_id', classId);
+
+  if (deactivateError) throw deactivateError;
+  if (enrollments.length === 0) return;
+
+  const { error: upsertError } = await supabase.from('class_students').upsert(
+    enrollments.map((enrollment) => ({
+      user_id: userId,
+      class_id: classId,
+      student_id: enrollment.student_id,
+      days_of_week: enrollment.days_of_week ?? null,
+      active: true,
+    })),
+    { onConflict: 'class_id,student_id' },
+  );
+
+  if (upsertError) throw upsertError;
 }
 
 /** Remover é desativar: preserva o histórico de frequência daquela turma. */
