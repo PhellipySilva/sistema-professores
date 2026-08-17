@@ -96,6 +96,14 @@ order by tablename;
 Devem aparecer **10 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
 foi aplicado e os dados estariam expostos — não siga adiante.
 
+> **Rode cada arquivo uma única vez.** O SQL Editor executa tudo numa transação: se um comando
+> falhar (por exemplo `relation "profiles" already exists`, sinal de que o script foi colado duas
+> vezes), a transação inteira é desfeita e o banco volta ao que era antes.
+>
+> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 10 tabelas e as funções, é
+> seguro em qualquer estado, e depois dele os três arquivos rodam limpos. **É destrutivo:** apaga
+> os dados junto (não mexe nos usuários).
+
 ### 4. Criar o usuário professor
 
 Em **Authentication → Users → Add user**:
