@@ -1,7 +1,8 @@
 /* Listagem de turmas (spec, seção 14). */
 
 import { handleError, initPage } from '../app.js';
-import { createClass, deleteClass, listClasses, updateClass } from '../api/classes.js';
+import { createClass, deleteClass, listClassStudents, listClasses, updateClass } from '../api/classes.js';
+import { listStudents } from '../api/students.js';
 import { confirmDialog } from '../components/confirm-dialog.js';
 import { emptyState, errorState } from '../components/empty-state.js';
 import { icon } from '../components/icons.js';
@@ -13,6 +14,9 @@ import { classCard, openClassModal } from './turmas-ui.js';
 const { user } = await initPage('turmas');
 
 const content = $('#page-content');
+
+/* A lista de alunos alimenta o seletor de matrícula do modal de turma. */
+let allStudents = [];
 
 $('#page-actions').append(
   el('button', {
@@ -29,7 +33,9 @@ async function load() {
   showSkeletons(content, 3);
 
   try {
-    const classes = await listClasses(user.id);
+    const [classes, students] = await Promise.all([listClasses(user.id), listStudents(user.id)]);
+
+    allStudents = students;
     renderClasses(classes);
   } catch (error) {
     handleError(error, 'Não foi possível carregar as turmas.');
@@ -62,6 +68,7 @@ function renderClasses(classes) {
 function openCreate() {
   openClassModal({
     turma: null,
+    students: allStudents,
     onSave: async (payload) => {
       try {
         await createClass(user.id, payload);
@@ -69,15 +76,35 @@ function openCreate() {
         toast.error(handleError(error, 'Não foi possível criar a turma. Tente novamente.'));
         throw error;
       }
-      toast.success('Turma criada com sucesso.');
+      toast.success(
+        payload.enrollments?.length > 0
+          ? `Turma criada com ${payload.enrollments.length} aluno${payload.enrollments.length === 1 ? '' : 's'}.`
+          : 'Turma criada com sucesso.',
+      );
       await load();
     },
   });
 }
 
-function openEdit(turma) {
+async function openEdit(turma) {
+  // As matrículas atuais não vêm na listagem: busca só ao abrir a edição.
+  let enrollments = [];
+
+  try {
+    const enrolled = await listClassStudents(user.id, turma.id);
+    enrollments = enrolled.map((student) => ({
+      student_id: student.id,
+      days_of_week: student.days_of_week,
+    }));
+  } catch (error) {
+    toast.error(handleError(error, 'Não foi possível carregar os alunos da turma.'));
+    return;
+  }
+
   openClassModal({
     turma,
+    students: allStudents,
+    enrollments,
     onSave: async (payload) => {
       try {
         await updateClass(user.id, turma.id, payload);

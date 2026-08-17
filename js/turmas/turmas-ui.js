@@ -7,6 +7,8 @@ import { openFormModal } from '../components/modal.js';
 import { CATEGORIES, formatCategory, pluralize } from '../utils/formatters.js';
 import { addMinutesToTime, formatTime, formatWeekdayList, minutesBetween, weekdayShort } from '../utils/dates.js';
 import { validateCategory, validateName } from '../utils/validators.js';
+import { buildStudentPicker } from './aluno-picker.js';
+import { expandEnrollmentDays, normalizeEnrollmentDays } from './matriculas.js';
 
 const WEEKDAY_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
   value: day,
@@ -71,10 +73,28 @@ export function classCard(turma, { onEdit, onDelete }) {
  * professor pensa. O end_time é calculado na hora de salvar — o banco não
  * guarda duração, justamente para os dois nunca divergirem.
  */
-export function openClassModal({ turma, onSave, onClose }) {
+/**
+ * @param {object[]} [options.students]     todos os alunos, para o seletor
+ * @param {object[]} [options.enrollments]  matrículas atuais, na edição
+ *
+ * Sem `students`, o seletor não aparece e o modal se comporta como antes —
+ * é assim que a página do aluno reaproveita este modal para criar uma turma
+ * no meio do cadastro, sem virar duas telas de uma vez.
+ */
+export function openClassModal({ turma, students, enrollments = [], onSave, onClose }) {
   const isEdit = Boolean(turma);
   const schedules = turma?.class_schedules ?? [];
   const first = schedules[0];
+  const initialDays = [...new Set(schedules.map((schedule) => schedule.day_of_week))].sort(
+    (a, b) => a - b,
+  );
+
+  const daysField = checkboxChips({
+    name: 'days',
+    label: 'Dias da semana',
+    options: WEEKDAY_OPTIONS,
+    values: initialDays,
+  });
 
   const fields = [
     textField({
@@ -90,12 +110,7 @@ export function openClassModal({ turma, onSave, onClose }) {
       options: CATEGORIES,
       value: turma?.category ?? 'adulto',
     }),
-    checkboxChips({
-      name: 'days',
-      label: 'Dias da semana',
-      options: WEEKDAY_OPTIONS,
-      values: schedules.map((schedule) => schedule.day_of_week),
-    }),
+    daysField,
     textField({
       name: 'start_time',
       label: 'Horário de início',
@@ -115,6 +130,26 @@ export function openClassModal({ turma, onSave, onClose }) {
     }),
   ];
 
+  let picker = null;
+
+  if (students) {
+    picker = buildStudentPicker({ students, classDays: initialDays, enrollments });
+
+    fields.push(
+      el('p', { class: 'form__section-title', text: 'Alunos' }),
+      el('p', {
+        class: 'field__hint',
+        text: 'Marcar o aluno já o coloca em todos os dias da turma. Com dois ou mais dias, use os botões ao lado para tirar quem não vai em algum deles.',
+      }),
+      picker.element,
+    );
+
+    // Mexer nos dias da turma precisa refletir nos chips de cada aluno.
+    daysField.addEventListener('change', () => {
+      picker.setClassDays(readCheckedDays(daysField));
+    });
+  }
+
   return openFormModal({
     title: isEdit ? 'Editar turma' : 'Nova turma',
     fields,
@@ -125,10 +160,7 @@ export function openClassModal({ turma, onSave, onClose }) {
       const category = form.elements.category.value;
       const startTime = form.elements.start_time.value;
       const duration = Number(form.elements.duration.value);
-
-      const days = [...form.querySelectorAll('input[name="days"]:checked')].map((input) =>
-        Number(input.value),
-      );
+      const days = readCheckedDays(form);
 
       const errors = {
         name: validateName(name),
@@ -151,16 +183,28 @@ export function openClassModal({ turma, onSave, onClose }) {
           start_time: `${startTime}:00`,
           end_time: addMinutesToTime(startTime, duration),
         })),
+        enrollments: picker ? picker.read() : undefined,
       });
     },
   });
+}
+
+function readCheckedDays(scope) {
+  return [...scope.querySelectorAll('input[name="days"]:checked')]
+    .map((input) => Number(input.value))
+    .sort((a, b) => a - b);
 }
 
 /* ============================================================
    Modal de adicionar aluno à turma
    ============================================================ */
 
-export function openAddStudentModal({ availableStudents, onSave }) {
+/**
+ * @param {number[]} [options.classDays]  dias da turma; com 2+ o modal oferece
+ *                                        escolher em quais o aluno frequenta
+ * @param {Function} options.onSave       async (studentId, daysOfWeek|null)
+ */
+export function openAddStudentModal({ availableStudents, classDays = [], onSave }) {
   if (availableStudents.length === 0) {
     return openFormModal({
       title: 'Adicionar aluno',
@@ -188,17 +232,61 @@ export function openAddStudentModal({ availableStudents, onSave }) {
     }),
   ];
 
+  const hasMultipleDays = classDays.length > 1;
+
+  if (hasMultipleDays) {
+    fields.push(
+      checkboxChips({
+        name: 'days',
+        label: 'Frequenta em',
+        options: classDays.map((day) => ({ value: day, label: weekdayShort(day) })),
+        values: classDays, // padrão: todos os dias da turma
+      }),
+    );
+  }
+
   return openFormModal({
     title: 'Adicionar aluno à turma',
     fields,
     submitLabel: 'Adicionar',
     onSubmit: async (form) => {
       const studentId = form.elements.student_id.value;
+      const days = hasMultipleDays ? readCheckedDays(form) : [];
 
-      if (showFieldErrors(form, { student_id: studentId ? null : 'Selecione um aluno.' })) {
+      const errors = {
+        student_id: studentId ? null : 'Selecione um aluno.',
+        days: hasMultipleDays && days.length === 0 ? 'Selecione pelo menos um dia.' : null,
+      };
+
+      if (showFieldErrors(form, errors)) throw new Error('validação');
+
+      await onSave(studentId, normalizeEnrollmentDays(days, classDays));
+    },
+  });
+}
+
+/** Modal curto para trocar os dias de quem já está matriculado. */
+export function openEnrollmentDaysModal({ student, classDays, onSave }) {
+  const current = expandEnrollmentDays(student.days_of_week, classDays);
+
+  return openFormModal({
+    title: `Dias de ${student.name}`,
+    fields: [
+      checkboxChips({
+        name: 'days',
+        label: 'Frequenta em',
+        options: classDays.map((day) => ({ value: day, label: weekdayShort(day) })),
+        values: current,
+      }),
+    ],
+    submitLabel: 'Salvar',
+    onSubmit: async (form) => {
+      const days = readCheckedDays(form);
+
+      if (showFieldErrors(form, { days: days.length === 0 ? 'Selecione pelo menos um dia.' : null })) {
         throw new Error('validação');
       }
-      await onSave(studentId);
+      await onSave(normalizeEnrollmentDays(days, classDays));
     },
   });
 }

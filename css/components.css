@@ -938,3 +938,109 @@ a.list-item:hover {
   text-transform: uppercase;
   letter-spacing: var(--letter-spacing-wide);
 }
+
+/* ============================================================
+   Seletor de alunos da turma (com dias por aluno)
+   ============================================================ */
+
+.picker__search {
+  margin-bottom: var(--space-2);
+}
+
+.picker__counter {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.picker__list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.picker__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+}
+
+.picker__row + .picker__row {
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.picker__row--on {
+  background-color: var(--color-primary-soft);
+}
+
+.picker__main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: var(--tap-target);
+  cursor: pointer;
+}
+
+.picker__checkbox {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+}
+
+.picker__name {
+  display: block;
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
+}
+
+.picker__meta {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.picker__days {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* Chip de dia: alvo de 40px, o mínimo confortável para o polegar num
+   elemento repetido lado a lado. */
+.picker__day {
+  min-width: 40px;
+  min-height: 40px;
+  padding: var(--space-1);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+  transition: background-color var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.picker__day--on {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+/* Badge clicável — usado para trocar os dias na página da turma. */
+.badge--button {
+  border: var(--border-width) solid transparent;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.badge--button:hover {
+  border-color: currentColor;
+}

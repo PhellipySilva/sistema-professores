@@ -7,6 +7,7 @@ import {
   listClassStudents,
   removeStudentFromClass,
   updateClass,
+  updateEnrollmentDays,
 } from '../api/classes.js';
 import { listStudents } from '../api/students.js';
 import { confirmDialog } from '../components/confirm-dialog.js';
@@ -17,7 +18,13 @@ import { toast } from '../components/toast.js';
 import { $, el, getQueryParam, render } from '../utils/dom.js';
 import { formatCategory, formatPhone, pluralize } from '../utils/formatters.js';
 import { formatDateShortBR, formatTime, formatTimeRange, todayISO, weekdayName } from '../utils/dates.js';
-import { openAddStudentModal, openClassModal, scheduleSummary } from './turmas-ui.js';
+import {
+  openAddStudentModal,
+  openClassModal,
+  openEnrollmentDaysModal,
+  scheduleSummary,
+} from './turmas-ui.js';
+import { classDaysOf, formatEnrollmentDays } from './matriculas.js';
 import { nextOccurrences } from '../agenda/ocorrencias.js';
 
 const { user } = await initPage('turma');
@@ -99,6 +106,8 @@ function summaryCard(turma) {
 function studentsSection(turma, enrolled, allStudents) {
   const enrolledIds = new Set(enrolled.map((student) => student.id));
   const available = allStudents.filter((student) => !enrolledIds.has(student.id));
+  const classDays = classDaysOf(turma);
+  const hasMultipleDays = classDays.length > 1;
 
   const header = el('div', { class: 'row-between section__header' }, [
     el('h2', {
@@ -109,27 +118,38 @@ function studentsSection(turma, enrolled, allStudents) {
       type: 'button',
       class: 'btn btn--ghost btn--sm',
       html: `${icon('plus', 16)}<span>Adicionar</span>`,
-      onclick: () => openAddStudent(turma, available),
+      onclick: () => openAddStudent(turma, available, classDays),
     }),
   ]);
 
   const body = enrolled.length === 0
     ? [el('p', { class: 'text-muted text-sm', text: 'Nenhum aluno matriculado nesta turma.' })]
-    : enrolled.map((student) =>
-        el('div', { class: 'list-item' }, [
-          el('div', {}, [
-            el('a', {
-              class: 'list-item__title',
-              href: `/pages/aluno.html?id=${student.id}`,
-              text: student.name,
+    : enrolled.map((student) => {
+        const meta = [
+          formatCategory(student.category),
+          student.phone ? formatPhone(student.phone) : null,
+        ].filter(Boolean);
+
+        const actions = [];
+
+        // O selo de dias só aparece quando a turma tem mais de um dia —
+        // numa turma de um dia só, "Todos os dias" não informa nada.
+        if (hasMultipleDays) {
+          const partial = student.days_of_week?.length > 0
+            && student.days_of_week.length < classDays.length;
+
+          actions.push(
+            el('button', {
+              type: 'button',
+              class: `badge badge--${partial ? 'info' : 'neutral'} badge--button`,
+              title: 'Alterar os dias deste aluno',
+              text: formatEnrollmentDays(student.days_of_week, classDays),
+              onclick: () => openChangeDays(turma, student, classDays),
             }),
-            el('p', {
-              class: 'list-item__meta',
-              text: [formatCategory(student.category), student.phone ? formatPhone(student.phone) : null]
-                .filter(Boolean)
-                .join(' · '),
-            }),
-          ]),
+          );
+        }
+
+        actions.push(
           el('button', {
             type: 'button',
             class: 'btn btn--ghost btn--icon',
@@ -138,8 +158,20 @@ function studentsSection(turma, enrolled, allStudents) {
             html: icon('close', 18),
             onclick: () => confirmRemove(turma, student),
           }),
-        ]),
-      );
+        );
+
+        return el('div', { class: 'list-item' }, [
+          el('div', {}, [
+            el('a', {
+              class: 'list-item__title',
+              href: `/pages/aluno.html?id=${student.id}`,
+              text: student.name,
+            }),
+            el('p', { class: 'list-item__meta', text: meta.join(' · ') }),
+          ]),
+          el('div', { class: 'row' }, actions),
+        ]);
+      });
 
   return el('section', { class: 'section' }, [header, el('div', { class: 'card card--flush' }, body)]);
 }
@@ -182,17 +214,35 @@ function openEdit(turma) {
   });
 }
 
-function openAddStudent(turma, available) {
+function openAddStudent(turma, available, classDays) {
   openAddStudentModal({
     availableStudents: available,
-    onSave: async (studentId) => {
+    classDays,
+    onSave: async (studentId, daysOfWeek) => {
       try {
-        await addStudentToClass(user.id, turma.id, studentId);
+        await addStudentToClass(user.id, turma.id, studentId, daysOfWeek);
       } catch (error) {
         toast.error(handleError(error, 'Não foi possível adicionar o aluno. Tente novamente.'));
         throw error;
       }
       toast.success('Aluno adicionado à turma.');
+      await load();
+    },
+  });
+}
+
+function openChangeDays(turma, student, classDays) {
+  openEnrollmentDaysModal({
+    student,
+    classDays,
+    onSave: async (daysOfWeek) => {
+      try {
+        await updateEnrollmentDays(user.id, turma.id, student.id, daysOfWeek);
+      } catch (error) {
+        toast.error(handleError(error, 'Não foi possível alterar os dias. Tente novamente.'));
+        throw error;
+      }
+      toast.success('Dias atualizados.');
       await load();
     },
   });
