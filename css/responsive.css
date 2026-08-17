@@ -1,0 +1,158 @@
+/* O CSS base é o do celular. Aqui só ADICIONAMOS o que telas maiores ganham,
+   e transformamos tabela em card no celular (spec, seção 26).
+
+   Breakpoints:
+     até 640px   celular  — bottom nav, cards, uma coluna
+     641–1023px  tablet   — bottom nav, duas colunas
+     1024px+     desktop  — sidebar fixa, tabelas de verdade */
+
+/* ============================================================
+   Celular: tabela vira lista de cards
+   ============================================================ */
+
+@media (max-width: 640px) {
+  .data-table,
+  .data-table tbody,
+  .data-table tr,
+  .data-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table {
+    border: none;
+    background: transparent;
+  }
+
+  .data-table thead {
+    /* o cabeçalho não faz sentido em card; os rótulos vêm de data-label */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .data-table tr {
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background-color: var(--color-surface);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+
+  .data-table tbody tr + tr {
+    border-top: var(--border-width) solid var(--color-border);
+  }
+
+  .data-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-2) 0;
+    text-align: right;
+  }
+
+  .data-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-wide);
+    text-align: left;
+  }
+
+  /* Modal ocupa a tela inteira no celular — mais espaço para o teclado virtual. */
+  .modal {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .modal__body {
+    flex: 1;
+  }
+}
+
+/* ============================================================
+   Tablet
+   ============================================================ */
+
+@media (min-width: 641px) {
+  .page-content {
+    padding: var(--space-6);
+  }
+
+  .grid-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid-stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .toast-region {
+    inset-inline-start: auto;
+    inset-inline-end: var(--space-6);
+    width: min(400px, calc(100vw - var(--space-12)));
+  }
+}
+
+/* ============================================================
+   Desktop: sidebar entra, bottom nav sai
+   ============================================================ */
+
+@media (min-width: 1024px) {
+  .sidebar {
+    display: flex;
+  }
+
+  .bottom-nav {
+    display: none;
+  }
+
+  .app-main {
+    margin-inline-start: var(--sidebar-width);
+    padding-bottom: var(--space-10);
+  }
+
+  .page-header {
+    padding-inline: var(--space-8);
+  }
+
+  .page-content {
+    padding: var(--space-8);
+  }
+
+  .grid-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .modal__footer .btn {
+    flex: 0 0 auto;
+  }
+}
+
+/* ============================================================
+   Impressão: só o conteúdo
+   ============================================================ */
+
+@media print {
+  .sidebar,
+  .bottom-nav,
+  .page-header__actions,
+  .toast-region {
+    display: none !important;
+  }
+
+  .app-main {
+    margin: 0;
+    padding: 0;
+  }
+}
