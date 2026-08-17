@@ -44,14 +44,19 @@ begin
   ---------------------------------------------------------------------------
   -- Sem `returning into` aqui: com várias linhas, o PL/pgSQL rejeita.
   -- Os ids são recuperados logo abaixo, um a um.
-  insert into public.students (user_id, name, phone, category, guardian_name, monthly_fee_cents, due_day)
+  --
+  -- created_at é jogado 3 meses para trás de propósito: a cobrança de um aluno
+  -- só começa no mês da matrícula, então alunos criados "hoje" nunca ficariam
+  -- em atraso e o seed não conseguiria demonstrar o status vermelho.
+  insert into public.students
+    (user_id, name, phone, category, guardian_name, monthly_fee_cents, due_day, created_at)
   values
-    (v_user_id, '[teste] João Silva',    '82999990001', 'adulto', null,                15000, 10),
-    (v_user_id, '[teste] Maria Souza',   '82999990002', 'kids',   'Ana Souza',         12000, 10),
-    (v_user_id, '[teste] Pedro Almeida', '82999990003', 'adulto', null,                15000,  5),
-    (v_user_id, '[teste] Ana Costa',     '82999990004', 'kids',   'Carlos Costa',      12000, 15),
-    (v_user_id, '[teste] Lucas Rocha',   '82999990005', 'adulto', null,                18000, 20),
-    (v_user_id, '[teste] Beatriz Lima',  '82999990006', 'adulto', null,                 null, null);
+    (v_user_id, '[teste] João Silva',    '82999990001', 'adulto', null,           15000, 10, now() - interval '3 month'),
+    (v_user_id, '[teste] Maria Souza',   '82999990002', 'kids',   'Ana Souza',    12000, 10, now() - interval '3 month'),
+    (v_user_id, '[teste] Pedro Almeida', '82999990003', 'adulto', null,           15000,  5, now() - interval '3 month'),
+    (v_user_id, '[teste] Ana Costa',     '82999990004', 'kids',   'Carlos Costa', 12000, 15, now() - interval '3 month'),
+    (v_user_id, '[teste] Lucas Rocha',   '82999990005', 'adulto', null,           18000, 20, now() - interval '3 month'),
+    (v_user_id, '[teste] Beatriz Lima',  '82999990006', 'adulto', null,            null, null, now() - interval '3 month');
 
   select id into v_joao  from public.students where user_id = v_user_id and name = '[teste] João Silva';
   select id into v_maria from public.students where user_id = v_user_id and name = '[teste] Maria Souza';

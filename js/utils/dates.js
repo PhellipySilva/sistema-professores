@@ -57,6 +57,23 @@ export function parseISODate(iso) {
   return new Date(year, month - 1, day);
 }
 
+/**
+ * timestamptz do banco ('2026-08-17T03:30:00.000Z') → dia LOCAL 'YYYY-MM-DD'.
+ *
+ * É a única conversão legítima de timestamp para data no projeto: `created_at`
+ * é um instante real, e queremos saber em que dia ele caiu no fuso do professor.
+ * Fatiar a string (`.slice(0, 10)`) daria o dia em UTC, que no Brasil erra o dia
+ * para qualquer coisa cadastrada depois das 21h.
+ */
+export function timestampToLocalISODate(timestamp) {
+  if (!timestamp) return null;
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return toISODate(date);
+}
+
 /** Data de hoje no fuso do usuário, como 'YYYY-MM-DD'. */
 export function todayISO() {
   return toISODate(new Date());
