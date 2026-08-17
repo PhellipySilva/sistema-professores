@@ -4,7 +4,11 @@ import {
   startOfMonth, toISODate, todayISO,
 } from '../js/utils/dates.js';
 import { calendarWeeks, mergeOccurrences, nextOccurrences, plannedOccurrencesForMonth } from '../js/agenda/ocorrencias.js';
-import { dueDateForMonth, isValidDueDay, paymentStatus, recentReferenceMonths, studentFinancialStatus } from '../js/financeiro/financeiro.js';
+import {
+  billingStartDate, buildInitialPayment, dueDateForMonth, enrollmentMonth, isValidDueDay,
+  paymentStatus, recentReferenceMonths, selectableReferenceMonths, studentFinancialStatus,
+} from '../js/financeiro/financeiro.js';
+import { timestampToLocalISODate } from '../js/utils/dates.js';
 import { parseCurrencyToCents, formatCurrency, formatPhone } from '../js/utils/formatters.js';
 import { validateDueDay } from '../js/utils/validators.js';
 
@@ -94,7 +98,48 @@ eq('pagamento pago', paymentStatus({ paid_date: '2026-08-05', due_date: '2026-08
 eq('pagamento atrasado', paymentStatus({ paid_date: null, due_date: '2026-08-10' }, '2026-08-17'), 'overdue');
 eq('pagamento a vencer', paymentStatus({ paid_date: null, due_date: '2026-08-25' }, '2026-08-17'), 'pending');
 
-const aluno = { monthly_fee_cents: 15000, due_day: 10 };
+/* A cobranca comeca no mes da matricula (ou do pagamento mais antigo).
+   Sem isso, todo aluno recem-cadastrado nascia "Atrasado". */
+const matriculadoHoje = { monthly_fee_cents: 15000, due_day: 10, created_at: '2026-08-17T14:00:00.000Z' };
+const matriculadoAntes = { monthly_fee_cents: 15000, due_day: 10, created_at: '2026-05-02T14:00:00.000Z' };
+
+eq('BUG: aluno cadastrado hoje sem pagamento -> ok', studentFinancialStatus(matriculadoHoje, [], '2026-08-17'), 'ok');
+eq('BUG: aluno cadastrado hoje, vencimento ja passou -> ok', studentFinancialStatus(matriculadoHoje, [], '2026-08-31'), 'ok');
+eq('aluno antigo sem pagamento nenhum -> overdue', studentFinancialStatus(matriculadoAntes, [], '2026-08-17'), 'overdue');
+eq('cadastrado hoje com ultimo pagamento em junho -> overdue', studentFinancialStatus(matriculadoHoje, [
+  { reference_month: '2026-06-01', paid_date: '2026-06-10' },
+], '2026-08-17'), 'overdue');
+eq('cadastrado hoje com pagamento do mes atual -> ok', studentFinancialStatus(matriculadoHoje, [
+  { reference_month: '2026-08-01', paid_date: '2026-08-17' },
+], '2026-08-17'), 'ok');
+eq('matricula no mes passado, pagou o mes passado, atual nao venceu -> ok', studentFinancialStatus(
+  { monthly_fee_cents: 15000, due_day: 20, created_at: '2026-07-05T14:00:00.000Z' },
+  [{ reference_month: '2026-07-01', paid_date: '2026-07-19' }], '2026-08-17'), 'ok');
+eq('matricula no mes passado, nao pagou o mes passado -> overdue', studentFinancialStatus(
+  { monthly_fee_cents: 15000, due_day: 10, created_at: '2026-07-05T14:00:00.000Z' },
+  [], '2026-08-17'), 'overdue');
+eq('billingStartDate usa o pagamento mais antigo', billingStartDate(matriculadoHoje, [
+  { reference_month: '2026-06-01', paid_date: '2026-06-10' },
+]), '2026-06-01');
+eq('billingStartDate usa a data da matricula quando nao ha pagamento', billingStartDate(matriculadoHoje, []), '2026-08-17');
+eq('enrollmentMonth converte timestamp para mes local', enrollmentMonth(matriculadoAntes), '2026-05-01');
+eq('timestamp noturno nao pula o dia', timestampToLocalISODate('2026-08-17T14:00:00.000Z').slice(0, 7), '2026-08');
+
+/* Pagamento inicial montado no cadastro */
+eq('buildInitialPayment mes passado usa o vencimento como data', buildInitialPayment(
+  { referenceMonth: '2026-07-01', monthlyFeeCents: 15000, dueDay: 10 }, '2026-08-17'),
+  { reference_month: '2026-07-01', amount_cents: 15000, due_date: '2026-07-10', paid_date: '2026-07-10' });
+eq('buildInitialPayment vencimento futuro usa hoje', buildInitialPayment(
+  { referenceMonth: '2026-08-01', monthlyFeeCents: 15000, dueDay: 25 }, '2026-08-17'),
+  { reference_month: '2026-08-01', amount_cents: 15000, due_date: '2026-08-25', paid_date: '2026-08-17' });
+eq('buildInitialPayment sem mensalidade -> null', buildInitialPayment(
+  { referenceMonth: '2026-08-01', monthlyFeeCents: null, dueDay: 10 }), null);
+eq('buildInitialPayment sem mes -> null', buildInitialPayment(
+  { referenceMonth: null, monthlyFeeCents: 15000, dueDay: 10 }), null);
+eq('selectableReferenceMonths mais recente primeiro', selectableReferenceMonths('2026-08-17', 3),
+  ['2026-08-01', '2026-07-01', '2026-06-01']);
+
+const aluno = { monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-10T12:00:00.000Z' };
 eq('sem mensalidade -> none', studentFinancialStatus({ monthly_fee_cents: null, due_day: null }, [], '2026-08-17'), 'none');
 eq('tudo pago -> ok', studentFinancialStatus(aluno, [
   { reference_month: '2026-06-01', paid_date: '2026-06-09' },

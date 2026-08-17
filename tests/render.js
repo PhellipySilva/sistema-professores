@@ -26,6 +26,16 @@ const check = (name, fn) => {
   }
 };
 
+/** Versão para o que precisa esperar o submit do formulário. */
+const checkAsync = async (name, fn) => {
+  try {
+    const value = await fn();
+    results.push({ name, ok: value === true, detail: value === true ? '' : String(value) });
+  } catch (error) {
+    results.push({ name, ok: false, detail: `LANÇOU: ${error.message}` });
+  }
+};
+
 const has = (node, text) => (node.textContent.includes(text) ? true : `não achou "${text}" em: ${node.textContent.slice(0, 120)}`);
 
 /* ---------- Dados falsos ---------- */
@@ -156,6 +166,148 @@ check('modal novo aluno vem vazio', () => {
   const ok = nome?.value === '';
   modal.close();
   return ok || `veio "${nome?.value}"`;
+});
+
+/* ---------- Cadastro com turma e pagamento inicial ---------- */
+const turmasDisponiveis = [
+  { id: 't1', name: 'Kids Iniciante', category: 'kids' },
+  { id: 't2', name: 'Adulto Manhã', category: 'adulto' },
+];
+
+check('cadastro novo tem campo de turma', () => {
+  const modal = openStudentModal({ student: null, classes: turmasDisponiveis, onSave: async () => {} });
+  const ok = Boolean(modal.element.querySelector('[name="class_id"]'));
+  modal.close();
+  return ok || 'sem select de turma';
+});
+check('cadastro novo lista as turmas existentes', () => {
+  const modal = openStudentModal({ student: null, classes: turmasDisponiveis, onSave: async () => {} });
+  const labels = [...modal.element.querySelectorAll('[name="class_id"] option')].map((o) => o.textContent);
+  const ok = labels.some((l) => l.includes('Kids Iniciante')) && labels.some((l) => l.includes('Adulto Manhã'));
+  modal.close();
+  return ok || `veio ${JSON.stringify(labels)}`;
+});
+check('cadastro oferece criar turma quando ha callback', () => {
+  const modal = openStudentModal({ student: null, classes: turmasDisponiveis, onCreateClass: async () => {}, onSave: async () => {} });
+  const ok = [...modal.element.querySelectorAll('[name="class_id"] option')].some((o) => o.textContent.includes('Criar nova turma'));
+  modal.close();
+  return ok || 'sem opcao de criar turma';
+});
+check('cadastro sem callback nao oferece criar turma', () => {
+  const modal = openStudentModal({ student: null, classes: turmasDisponiveis, onSave: async () => {} });
+  const ok = ![...modal.element.querySelectorAll('[name="class_id"] option')].some((o) => o.textContent.includes('Criar nova turma'));
+  modal.close();
+  return ok || 'ofereceu criar turma sem callback';
+});
+check('cadastro novo tem campo de ultima mensalidade paga', () => {
+  const modal = openStudentModal({ student: null, classes: [], onSave: async () => {} });
+  const ok = Boolean(modal.element.querySelector('[name="last_paid_month"]'));
+  modal.close();
+  return ok || 'sem select de ultimo pagamento';
+});
+check('ultima mensalidade comeca sem selecao', () => {
+  const modal = openStudentModal({ student: null, classes: [], onSave: async () => {} });
+  const ok = modal.element.querySelector('[name="last_paid_month"]').value === '';
+  modal.close();
+  return ok || 'ja vem preenchido';
+});
+check('edicao NAO mostra turma nem pagamento', () => {
+  const modal = openStudentModal({ student: aluno, classes: turmasDisponiveis, onCreateClass: async () => {}, onSave: async () => {} });
+  const temTurma = Boolean(modal.element.querySelector('[name="class_id"]'));
+  const temPagamento = Boolean(modal.element.querySelector('[name="last_paid_month"]'));
+  modal.close();
+  return (!temTurma && !temPagamento) || `turma=${temTurma} pagamento=${temPagamento}`;
+});
+/* Submete o formulário de verdade e confere o que chega em onSave. */
+await checkAsync('cadastro entrega payload, turma e mes no onSave', async () => {
+  let recebido = null;
+
+  const modal = openStudentModal({
+    student: null,
+    classes: turmasDisponiveis,
+    onSave: async (payload, extras) => {
+      recebido = { payload, extras };
+    },
+  });
+
+  const form = modal.element.querySelector('form');
+  form.elements.name.value = 'Carlos Dias';
+  form.elements.phone.value = '(82) 91234-5678';
+  form.elements.category.value = 'adulto';
+  form.elements.monthly_fee.value = '180,00';
+  form.elements.due_day.value = '15';
+  form.elements.class_id.value = 't2';
+  form.elements.last_paid_month.value = form.elements.last_paid_month.options[1].value;
+
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  modal.close();
+
+  if (!recebido) return 'onSave nao foi chamado';
+  if (recebido.payload.name !== 'Carlos Dias') return `nome: ${recebido.payload.name}`;
+  if (recebido.payload.phone !== '82912345678') return `telefone nao normalizado: ${recebido.payload.phone}`;
+  if (recebido.payload.monthly_fee_cents !== 18000) return `centavos: ${recebido.payload.monthly_fee_cents}`;
+  if (recebido.payload.due_day !== 15) return `due_day: ${recebido.payload.due_day}`;
+  if (recebido.extras.classId !== 't2') return `classId: ${recebido.extras.classId}`;
+  if (!/^\d{4}-\d{2}-01$/.test(recebido.extras.lastPaidMonth)) return `mes: ${recebido.extras.lastPaidMonth}`;
+  return true;
+});
+
+await checkAsync('kids sem responsavel e recusado', async () => {
+  let chamou = false;
+
+  const modal = openStudentModal({
+    student: null,
+    classes: [],
+    onSave: async () => { chamou = true; },
+  });
+
+  const form = modal.element.querySelector('form');
+  form.elements.name.value = 'Bruno Kids';
+  form.elements.category.value = 'kids';
+  form.elements.guardian_name.value = '';
+
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  const erroVisivel = [...form.querySelectorAll('.field__error')].some(
+    (node) => !node.classList.contains('hidden') && node.textContent.includes('responsável'),
+  );
+  const aindaAberto = modal.element.open;
+  modal.close();
+
+  if (chamou) return 'salvou mesmo sem responsavel';
+  if (!erroVisivel) return 'nao mostrou o erro do responsavel';
+  if (!aindaAberto) return 'fechou o modal em vez de manter aberto';
+  return true;
+});
+
+await checkAsync('ultimo pagamento sem mensalidade e recusado', async () => {
+  let chamou = false;
+
+  const modal = openStudentModal({
+    student: null,
+    classes: [],
+    onSave: async () => { chamou = true; },
+  });
+
+  const form = modal.element.querySelector('form');
+  form.elements.name.value = 'Sem Mensalidade';
+  form.elements.category.value = 'adulto';
+  form.elements.monthly_fee.value = '';
+  form.elements.last_paid_month.value = form.elements.last_paid_month.options[1].value;
+
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  const erroVisivel = [...form.querySelectorAll('.field__error')].some(
+    (node) => !node.classList.contains('hidden') && node.textContent.includes('mensalidade'),
+  );
+  modal.close();
+
+  if (chamou) return 'salvou sem mensalidade';
+  if (!erroVisivel) return 'nao explicou por que recusou';
+  return true;
 });
 
 /* ---------- Resultado ---------- */
