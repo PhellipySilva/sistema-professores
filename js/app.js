@@ -10,25 +10,24 @@
  *   3. revelar o corpo, que nasce invisível.
  */
 
+import { requireAuth, signOut, watchSession } from './auth.js';
 import { renderLayout } from './components/layout.js';
 
 /**
  * Prepara a página e devolve o contexto para o controller.
  *
  * @param {string} pageId  Identificador da página (ex.: 'alunos', 'agenda').
- * @returns {Promise<{ user: object|null }>}
+ * @returns {Promise<{ session: object, user: object }>}
  */
 export async function initPage(pageId) {
-  // FASE 2: aqui entra a guarda de sessão.
-  //   const session = await requireAuth();   // redireciona para /login.html se não houver
-  //   const user = session.user;
-  const user = null;
-  const onLogout = null;
+  // Sem sessão, esta chamada redireciona e nunca resolve — nada abaixo roda.
+  const session = await requireAuth();
 
-  renderLayout({ pageId, user, onLogout });
+  watchSession();
+  renderLayout({ pageId, user: session.user, onLogout: signOut });
   revealPage();
 
-  return { user };
+  return { session, user: session.user };
 }
 
 /** Tira a classe que mantém o <body> invisível durante o boot. */
