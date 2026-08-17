@@ -71,7 +71,7 @@ export function classCard(turma, { onEdit, onDelete }) {
  * professor pensa. O end_time é calculado na hora de salvar — o banco não
  * guarda duração, justamente para os dois nunca divergirem.
  */
-export function openClassModal({ turma, onSave }) {
+export function openClassModal({ turma, onSave, onClose }) {
   const isEdit = Boolean(turma);
   const schedules = turma?.class_schedules ?? [];
   const first = schedules[0];
@@ -119,6 +119,7 @@ export function openClassModal({ turma, onSave }) {
     title: isEdit ? 'Editar turma' : 'Nova turma',
     fields,
     submitLabel: isEdit ? 'Salvar alterações' : 'Criar turma',
+    onClose,
     onSubmit: async (form) => {
       const name = (form.elements.name.value ?? '').trim();
       const category = form.elements.category.value;

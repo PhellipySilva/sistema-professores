@@ -6,7 +6,9 @@ import { icon } from '../components/icons.js';
 import { selectField, showFieldErrors, textField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
 import { CATEGORIES, centsToInputValue, formatCategory, formatCurrency, formatPhone, normalizePhone, parseCurrencyToCents } from '../utils/formatters.js';
-import { financialStatusLabel } from '../financeiro/financeiro.js';
+import { financialStatusLabel, selectableReferenceMonths } from '../financeiro/financeiro.js';
+import { monthLabel } from '../utils/dates.js';
+import { openClassModal } from '../turmas/turmas-ui.js';
 import {
   validateCategory,
   validateDueDay,
@@ -98,27 +100,21 @@ export function searchBar({ value = '', onInput }) {
    Modal de cadastro / edição
    ============================================================ */
 
+/** Valor especial do select de turma que dispara o modal de criar turma. */
+const NEW_CLASS = '__nova__';
+
 /**
- * @param {object|null} student  null = cadastro novo
- * @param {Function}    onSave   async (dados) => void — lança em caso de erro
+ * @param {object|null}  options.student        null = cadastro novo
+ * @param {object[]}     [options.classes]      turmas existentes, para o select
+ * @param {Function}     options.onSave         async (payload, extras) => void
+ * @param {Function}     [options.onCreateClass] async (dadosDaTurma) => turma criada
+ *
+ * `extras` traz { classId, lastPaidMonth } — só preenchidos no cadastro novo.
+ * Na edição, turma e pagamento são gerenciados nas telas próprias, para o
+ * formulário não virar dois assuntos ao mesmo tempo.
  */
-export function openStudentModal({ student, onSave }) {
+export function openStudentModal({ student, classes = [], onSave, onCreateClass }) {
   const isEdit = Boolean(student);
-
-  const categorySelect = selectField({
-    name: 'category',
-    label: 'Categoria',
-    options: CATEGORIES,
-    value: student?.category ?? 'adulto',
-  });
-
-  const guardianField = textField({
-    name: 'guardian_name',
-    label: 'Responsável',
-    value: student?.guardian_name ?? '',
-    placeholder: 'Nome do responsável',
-    hint: 'Obrigatório para alunos da categoria Kids.',
-  });
 
   const fields = [
     textField({
@@ -138,8 +134,19 @@ export function openStudentModal({ student, onSave }) {
       inputmode: 'tel',
       autocomplete: 'tel',
     }),
-    categorySelect,
-    guardianField,
+    selectField({
+      name: 'category',
+      label: 'Categoria',
+      options: CATEGORIES,
+      value: student?.category ?? 'adulto',
+    }),
+    textField({
+      name: 'guardian_name',
+      label: 'Responsável',
+      value: student?.guardian_name ?? '',
+      placeholder: 'Nome do responsável',
+      hint: 'Obrigatório para alunos da categoria Kids.',
+    }),
     textField({
       name: 'monthly_fee',
       label: 'Mensalidade',
@@ -161,6 +168,18 @@ export function openStudentModal({ student, onSave }) {
     }),
   ];
 
+  let classSelect = null;
+
+  if (!isEdit) {
+    classSelect = buildClassField(classes, onCreateClass);
+
+    fields.push(
+      formSectionTitle('Matrícula e situação inicial'),
+      classSelect.field,
+      buildLastPaymentField(),
+    );
+  }
+
   return openFormModal({
     title: isEdit ? 'Editar aluno' : 'Novo aluno',
     fields,
@@ -177,13 +196,111 @@ export function openStudentModal({ student, onSave }) {
         due_day: validateDueDay(values.dueDayRaw),
       };
 
+      // O pagamento inicial precisa de valor e vencimento para existir.
+      if (!isEdit && values.lastPaidMonth) {
+        if (!values.payload.monthly_fee_cents) {
+          errors.monthly_fee = 'Informe a mensalidade para registrar um pagamento.';
+        }
+        if (!values.payload.due_day) {
+          errors.due_day = 'Informe o dia de vencimento para registrar um pagamento.';
+        }
+      }
+
       if (showFieldErrors(form, errors)) {
         // Lançar mantém o modal aberto e devolve o botão ao estado normal.
         throw new Error('validação');
       }
 
-      await onSave(values.payload);
+      await onSave(values.payload, {
+        classId: values.classId,
+        lastPaidMonth: values.lastPaidMonth,
+      });
     },
+  });
+}
+
+/** Título de seção dentro do formulário, para separar assuntos. */
+function formSectionTitle(text) {
+  return el('p', { class: 'form__section-title', text });
+}
+
+/**
+ * Select de turma com a opção de criar uma na hora.
+ *
+ * Ao escolher "criar nova", abre o modal de turma por cima deste. O <dialog>
+ * nativo empilha, então o modal de cima recebe o foco e o de baixo continua
+ * intacto com o que já foi digitado.
+ */
+function buildClassField(classes, onCreateClass) {
+  const options = classes.map((turma) => ({
+    value: turma.id,
+    label: `${turma.name} · ${formatCategory(turma.category)}`,
+  }));
+
+  if (onCreateClass) {
+    options.push({ value: NEW_CLASS, label: '+ Criar nova turma...' });
+  }
+
+  const field = selectField({
+    name: 'class_id',
+    label: 'Turma',
+    placeholder: 'Sem turma por enquanto',
+    options,
+    hint: 'Opcional. Você pode matricular depois, na página da turma.',
+  });
+
+  const select = field.querySelector('select');
+  let previousValue = '';
+
+  select.addEventListener('change', async () => {
+    if (select.value !== NEW_CLASS) {
+      previousValue = select.value;
+      return;
+    }
+
+    // Volta ao valor anterior enquanto o modal de turma está aberto, para o
+    // campo nunca ficar exibindo "+ Criar nova turma..." como se fosse a escolha.
+    select.value = previousValue;
+
+    const created = await promptNewClass(onCreateClass);
+    if (!created) return;
+
+    const option = el('option', { value: created.id, text: `${created.name} · ${formatCategory(created.category)}` });
+    select.insertBefore(option, select.querySelector(`option[value="${NEW_CLASS}"]`));
+    select.value = created.id;
+    previousValue = created.id;
+  });
+
+  return { field, select };
+}
+
+/** Abre o modal de turma e resolve com a turma criada, ou null se cancelou. */
+function promptNewClass(onCreateClass) {
+  return new Promise((resolve) => {
+    let result = null;
+
+    openClassModal({
+      turma: null,
+      onSave: async (payload) => {
+        result = await onCreateClass(payload);
+      },
+      onClose: () => resolve(result),
+    });
+  });
+}
+
+function buildLastPaymentField() {
+  const options = selectableReferenceMonths().map((month) => ({
+    value: month,
+    label: monthLabel(month),
+  }));
+
+  return selectField({
+    name: 'last_paid_month',
+    label: 'Última mensalidade paga',
+    placeholder: 'Nenhuma ainda',
+    options,
+    hint: 'Define se o aluno começa como Em dia ou Atrasado. A data do pagamento fica no vencimento do mês escolhido — dá para ajustar depois no perfil.',
   });
 }
 
@@ -197,6 +314,9 @@ function readStudentForm(form) {
   const monthlyFeeRaw = get('monthly_fee');
   const dueDayRaw = get('due_day');
 
+  const classId = get('class_id');
+  const lastPaidMonth = get('last_paid_month');
+
   return {
     name,
     phoneRaw,
@@ -204,6 +324,8 @@ function readStudentForm(form) {
     guardian_name,
     monthlyFeeRaw,
     dueDayRaw,
+    classId: classId && classId !== NEW_CLASS ? classId : null,
+    lastPaidMonth: lastPaidMonth || null,
     payload: {
       name,
       phone: normalizePhone(phoneRaw),

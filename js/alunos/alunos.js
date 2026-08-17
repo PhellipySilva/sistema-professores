@@ -2,13 +2,19 @@
 
 import { handleError, initPage } from '../app.js';
 import { createStudent, deleteStudent, listStudents, updateStudent } from '../api/students.js';
-import { listPaymentsSince } from '../api/payments.js';
+import { listPaymentsSince, upsertPayment } from '../api/payments.js';
+import { addStudentToClass, createClass, listClasses } from '../api/classes.js';
 import { confirmDialog } from '../components/confirm-dialog.js';
 import { emptyState, errorState } from '../components/empty-state.js';
 import { icon } from '../components/icons.js';
 import { showSkeletons } from '../components/loading.js';
 import { toast } from '../components/toast.js';
-import { groupPaymentsByStudent, recentReferenceMonths, studentFinancialStatus } from '../financeiro/financeiro.js';
+import {
+  buildInitialPayment,
+  groupPaymentsByStudent,
+  recentReferenceMonths,
+  studentFinancialStatus,
+} from '../financeiro/financeiro.js';
 import { $, el, render } from '../utils/dom.js';
 import { openStudentModal, searchBar, studentCard } from './alunos-ui.js';
 
@@ -21,6 +27,7 @@ const actions = $('#page-actions');
    a cada tecla (spec, seção 42). */
 let students = [];
 let paymentsByStudent = new Map();
+let classes = [];
 let searchTerm = '';
 
 actions.append(
@@ -42,14 +49,17 @@ async function loadStudents() {
   showSkeletons(content, 4);
 
   try {
-    // Duas queries, não N+1: alunos e pagamentos são cruzados em memória.
-    const [studentList, payments] = await Promise.all([
+    // Três queries em paralelo, não N+1: alunos, pagamentos e turmas são
+    // cruzados em memória. As turmas alimentam o select do cadastro.
+    const [studentList, payments, classList] = await Promise.all([
       listStudents(user.id),
       listPaymentsSince(user.id, recentReferenceMonths()[0]),
+      listClasses(user.id),
     ]);
 
     students = studentList;
     paymentsByStudent = groupPaymentsByStudent(payments);
+    classes = classList;
     renderList();
   } catch (error) {
     handleError(error, 'Não foi possível carregar os alunos.');
@@ -152,17 +162,68 @@ function statusOf(student) {
 function openCreateModal() {
   openStudentModal({
     student: null,
-    onSave: async (payload) => {
+    classes,
+    onCreateClass: async (payload) => {
       try {
-        await createStudent(user.id, payload);
+        const created = await createClass(user.id, payload);
+        classes = [...classes, { ...created, class_schedules: [], student_count: 0 }];
+        toast.success('Turma criada.');
+        return created;
+      } catch (error) {
+        toast.error(handleError(error, 'Não foi possível criar a turma. Tente novamente.'));
+        throw error;
+      }
+    },
+    onSave: async (payload, extras) => {
+      let created;
+
+      try {
+        created = await createStudent(user.id, payload);
       } catch (error) {
         toast.error(handleError(error, 'Não foi possível cadastrar o aluno. Tente novamente.'));
         throw error;
       }
+
+      // O aluno já existe. Matrícula e pagamento inicial são passos extras:
+      // se algum falhar, avisamos sem desfazer o cadastro — o professor
+      // completa pela tela da turma ou do aluno.
+      await applyEnrollment(created, extras);
+
       toast.success('Aluno cadastrado com sucesso.');
       await loadStudents();
     },
   });
+}
+
+/** Matrícula na turma e registro do último pagamento, ambos opcionais. */
+async function applyEnrollment(student, { classId, lastPaidMonth } = {}) {
+  if (classId) {
+    try {
+      await addStudentToClass(user.id, classId, student.id);
+    } catch (error) {
+      toast.error(
+        handleError(error, 'Aluno cadastrado, mas não foi possível matriculá-lo na turma.'),
+      );
+    }
+  }
+
+  if (lastPaidMonth) {
+    const payment = buildInitialPayment({
+      referenceMonth: lastPaidMonth,
+      monthlyFeeCents: student.monthly_fee_cents,
+      dueDay: student.due_day,
+    });
+
+    if (payment) {
+      try {
+        await upsertPayment(user.id, { ...payment, student_id: student.id });
+      } catch (error) {
+        toast.error(
+          handleError(error, 'Aluno cadastrado, mas não foi possível registrar o pagamento.'),
+        );
+      }
+    }
+  }
 }
 
 function openEditModal(student) {
