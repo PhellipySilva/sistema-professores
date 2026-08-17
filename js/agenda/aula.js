@@ -9,7 +9,8 @@ import { errorState } from '../components/empty-state.js';
 import { showLoading } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, getQueryParam, render } from '../utils/dom.js';
-import { formatDateLongBR, formatTimeRange } from '../utils/dates.js';
+import { formatDateLongBR, formatTimeRange, getDayOfWeek } from '../utils/dates.js';
+import { studentsForDay } from '../turmas/matriculas.js';
 import { attendanceRow, attendanceSummary, countStatuses } from './frequencia.js';
 import { openMakeupModal } from '../reposicoes/reposicoes.js';
 
@@ -24,6 +25,7 @@ let session = null;
 let students = [];
 let guests = [];
 let statusByStudent = new Map();
+let hiddenByDay = 0;
 
 if (!sessionId) {
   render(content, errorState({ message: 'Aula não informada.' }));
@@ -43,7 +45,11 @@ async function load() {
       listMakeupsForSession(user.id, sessionId),
     ]);
 
-    students = enrolled;
+    // A turma pode ter alunos que só vão em alguns dias. A chamada mostra
+    // apenas quem frequenta o dia desta aula.
+    const dayOfWeek = getDayOfWeek(session.session_date);
+    students = studentsForDay(enrolled, dayOfWeek);
+    hiddenByDay = enrolled.length - students.length;
     guests = makeups.filter((makeup) => makeup.students).map((makeup) => ({
       ...makeup.students,
       makeupId: makeup.id,
@@ -72,7 +78,9 @@ function renderCall() {
     blocks.push(
       el('p', {
         class: 'text-muted text-sm',
-        text: 'Nenhum aluno matriculado nesta turma. Adicione alunos na página da turma.',
+        text: hiddenByDay > 0
+          ? 'Nenhum aluno desta turma frequenta neste dia da semana.'
+          : 'Nenhum aluno matriculado nesta turma. Adicione alunos na página da turma.',
       }),
     );
   } else {
@@ -114,6 +122,12 @@ function summaryBlock() {
     el('div', {}, [
       el('p', { class: 'card__title', text: 'Chamada' }),
       el('div', { id: 'attendance-summary' }, attendanceSummary(counts)),
+      hiddenByDay > 0
+        ? el('p', {
+            class: 'text-xs text-muted',
+            text: `${hiddenByDay} aluno${hiddenByDay === 1 ? '' : 's'} da turma não frequenta${hiddenByDay === 1 ? '' : 'm'} neste dia.`,
+          })
+        : null,
     ]),
     el('a', {
       class: 'btn btn--ghost btn--sm',
