@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.vite/
+
+# Variáveis de ambiente reais — NUNCA versionar (spec, seção 44)
+.env
+.env.local
+.env.*.local
+
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.vscode/
+.idea/
+.vercel
