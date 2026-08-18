@@ -111,6 +111,33 @@ export function selectField({ name, label, options, value = '', hint, placeholde
   return buildField({ label, hint, control, id });
 }
 
+/**
+ * Checkbox único: uma pergunta de sim/não do cadastro (ex.: atleta patrocinado).
+ *
+ * Diferente de `checkboxChips`, que é um GRUPO e devolve vários valores: aqui a
+ * resposta é um booleano, lido com `form.elements[name].checked`.
+ */
+export function checkboxField({ name, label, checked = false, hint }) {
+  const id = `field-${name}-${++fieldCounter}`;
+
+  const control = el('input', {
+    type: 'checkbox',
+    id,
+    name,
+    checked: checked ? '' : null,
+    'aria-describedby': `${id}-error`,
+  });
+
+  const children = [
+    el('label', { class: 'checkbox-field', for: id }, [control, el('span', { text: label })]),
+  ];
+
+  if (hint) children.push(el('p', { class: 'field__hint', text: hint }));
+  children.push(el('p', { class: 'field__error hidden', id: `${id}-error`, role: 'alert' }));
+
+  return el('div', { class: 'field' }, children);
+}
+
 /** Grupo de checkboxes em formato de chip — usado para os dias da semana. */
 export function checkboxChips({ name, label, options, values = [] }) {
   const selected = new Set(values.map(String));

@@ -1,20 +1,21 @@
 /* Listagem de alunos (spec, seções 8 e 9). */
 
 import { handleError, initPage } from '../app.js';
-import { createStudent, deleteStudent, listStudents, updateStudent } from '../api/students.js';
-import { listPaymentsSince, upsertPayment } from '../api/payments.js';
-import { addStudentToClass, createClass, listClasses } from '../api/classes.js';
+import { deleteStudent, listStudents, updateStudent } from '../api/students.js';
+import { listPaymentsSince } from '../api/payments.js';
+import { createClass, listClasses, listClassesOfStudent } from '../api/classes.js';
 import { confirmDialog } from '../components/confirm-dialog.js';
 import { emptyState, errorState } from '../components/empty-state.js';
 import { icon } from '../components/icons.js';
 import { showSkeletons } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import {
-  buildInitialPayment,
   groupPaymentsByStudent,
   recentReferenceMonths,
   studentFinancialStatus,
 } from '../financeiro/financeiro.js';
+import { createStudentWithEnrollment } from './cadastro.js';
+import { notifyVacancy } from '../lista-espera/notificacoes.js';
 import { $, el, render } from '../utils/dom.js';
 import { openStudentModal, searchBar, studentCard } from './alunos-ui.js';
 
@@ -175,55 +176,26 @@ function openCreateModal() {
       }
     },
     onSave: async (payload, extras) => {
-      let created;
+      let result;
 
       try {
-        created = await createStudent(user.id, payload);
+        result = await createStudentWithEnrollment(user.id, payload, extras);
       } catch (error) {
         toast.error(handleError(error, 'Não foi possível cadastrar o aluno. Tente novamente.'));
         throw error;
       }
 
-      // O aluno já existe. Matrícula e pagamento inicial são passos extras:
-      // se algum falhar, avisamos sem desfazer o cadastro — o professor
-      // completa pela tela da turma ou do aluno.
-      await applyEnrollment(created, extras);
+      // Matrícula e pagamento inicial são passos extras: quando um deles falha,
+      // o cadastro NÃO é desfeito — o aviso aparece e o professor completa pela
+      // tela da turma ou do aluno.
+      for (const warning of result.warnings) {
+        toast.error(handleError(warning.error, warning.message));
+      }
 
       toast.success('Aluno cadastrado com sucesso.');
       await loadStudents();
     },
   });
-}
-
-/** Matrícula na turma e registro do último pagamento, ambos opcionais. */
-async function applyEnrollment(student, { classId, lastPaidMonth } = {}) {
-  if (classId) {
-    try {
-      await addStudentToClass(user.id, classId, student.id);
-    } catch (error) {
-      toast.error(
-        handleError(error, 'Aluno cadastrado, mas não foi possível matriculá-lo na turma.'),
-      );
-    }
-  }
-
-  if (lastPaidMonth) {
-    const payment = buildInitialPayment({
-      referenceMonth: lastPaidMonth,
-      monthlyFeeCents: student.monthly_fee_cents,
-      dueDay: student.due_day,
-    });
-
-    if (payment) {
-      try {
-        await upsertPayment(user.id, { ...payment, student_id: student.id });
-      } catch (error) {
-        toast.error(
-          handleError(error, 'Aluno cadastrado, mas não foi possível registrar o pagamento.'),
-        );
-      }
-    }
-  }
 }
 
 function openEditModal(student) {
@@ -254,6 +226,15 @@ async function confirmDelete(student) {
 
   if (!confirmed) return;
 
+  // As turmas dele precisam ser lidas ANTES da exclusão: depois, o vínculo já
+  // foi embora em cascata e não há mais como saber onde a vaga abriu.
+  let classesOfStudent = [];
+  try {
+    classesOfStudent = await listClassesOfStudent(user.id, student.id);
+  } catch (error) {
+    handleError(error, 'Não foi possível verificar a lista de espera das turmas do aluno.');
+  }
+
   try {
     await deleteStudent(user.id, student.id);
   } catch (error) {
@@ -262,5 +243,26 @@ async function confirmDelete(student) {
   }
 
   toast.success('Aluno excluído.');
+  await announceVacancies(classesOfStudent, student.name);
   await loadStudents();
+}
+
+/**
+ * Avisa a lista de espera das turmas que perderam um aluno.
+ *
+ * Falha aqui não vira erro na tela: a exclusão já deu certo, e o professor não
+ * pode ficar com a impressão de que ela não aconteceu. O detalhe técnico fica
+ * no console.
+ */
+async function announceVacancies(classesOfStudent, studentName) {
+  for (const turma of classesOfStudent) {
+    try {
+      const notification = await notifyVacancy(user.id, { turma, studentName });
+      if (notification) {
+        toast.info(`Vaga aberta em ${turma.name}: há gente na lista de espera.`);
+      }
+    } catch (error) {
+      handleError(error, 'Não foi possível avisar a lista de espera.');
+    }
+  }
 }

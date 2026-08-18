@@ -76,6 +76,7 @@ export default defineConfig(({ command, mode }) => {
           aluno: page('pages/aluno.html'),
           turmas: page('pages/turmas.html'),
           turma: page('pages/turma.html'),
+          listaEspera: page('pages/lista-espera.html'),
           agenda: page('pages/agenda.html'),
           aula: page('pages/aula.html'),
           planejamentos: page('pages/planejamentos.html'),

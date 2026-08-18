@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Celular · pré-visualização</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #d9dde5; font: 13px system-ui; display: flex; gap: 16px; }
+      figure { margin: 0; }
+      figcaption { margin-bottom: 6px; font-weight: 600; color: #333; }
+      iframe { border: 0; border-radius: 12px; background: #fff; box-shadow: 0 4px 16px rgb(0 0 0 / 20%); }
+    </style>
+  </head>
+  <body>
+    <figure>
+      <figcaption id="cap-a">390 px — conteúdo</figcaption>
+      <iframe id="a" width="390" height="1240" src="/tests/preview.html"></iframe>
+    </figure>
+    <figure>
+      <figcaption id="cap-b">390 px — menu aberto</figcaption>
+      <iframe id="b" width="390" height="1240" src="/tests/preview.html?menu=1"></iframe>
+    </figure>
+    <figure>
+      <figcaption id="cap-c">320 px — tela mínima</figcaption>
+      <iframe id="c" width="320" height="1240" src="/tests/preview.html"></iframe>
+    </figure>
+
+    <script type="module">
+      /* Mede o scroll horizontal DENTRO de cada iframe: é o único jeito de
+         testar 320 px, porque o Chrome headless trava o viewport em 485. */
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const linhas = [];
+          for (const id of ['a', 'b', 'c']) {
+            const frame = document.getElementById(id).contentDocument;
+            const doc = frame.documentElement;
+            const sobra = doc.scrollWidth - doc.clientWidth;
+            linhas.push(`${id}:${doc.clientWidth}px sobra=${sobra}`);
+            document.getElementById(`cap-${id}`).textContent += sobra > 0 ? ` ⚠ ESTOURA ${sobra}px` : ' ✓ sem scroll lateral';
+
+            if (sobra > 0) {
+              const culpados = [];
+              for (const node of frame.querySelectorAll('body *')) {
+                const r = node.getBoundingClientRect();
+                const estilo = frame.defaultView.getComputedStyle(node);
+                if (estilo.position === 'fixed' || estilo.visibility === 'hidden') continue;
+                if (r.right > doc.clientWidth + 1) {
+                  culpados.push(`${node.tagName}.${String(node.className).split(' ')[0]}@${Math.round(r.right)}`);
+                }
+              }
+              linhas.push(`>> ${culpados.slice(0, 5).join(' , ')}`);
+            }
+          }
+          document.title = linhas.join(' | ');
+        }, 1200);
+      });
+    </script>
+  </body>
+</html>

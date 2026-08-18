@@ -1,41 +1,76 @@
 /* Design tokens do sistema.
    Nenhum valor de cor, espaçamento, raio ou sombra deve ser escrito solto nos
-   outros arquivos CSS — tudo sai daqui (spec, seção 25). */
+   outros arquivos CSS — tudo sai daqui (spec, seção 25).
+
+   IDENTIDADE VISUAL
+   -----------------
+   Azul #0736C2 + preto + branco + neutros frios.
+
+   O azul é COR DE DESTAQUE, não cor de fundo: ele aparece na ação principal, no
+   item de menu selecionado, no foco de um campo e no número que importa. Fora
+   disso a tela é branca sobre cinza claríssimo, e o contraste vem do preto.
+   Superfície grande pintada de azul deixa de ser destaque e vira ruído. */
 
 :root {
   /* ---------- Cores: marca ---------- */
-  --color-primary: #0f766e;
-  --color-primary-hover: #115e59;
-  --color-primary-active: #134e4a;
-  --color-primary-soft: #d6f3ef;
+  --color-primary: #0736c2;
+  --color-primary-hover: #062ba0;
+  --color-primary-active: #05237f;
+  /* Fundo de estado selecionado (chip de dia, linha marcada, ícone de atalho).
+     Claro o bastante para o texto azul escuro passar em contraste AA. */
+  --color-primary-soft: #eaeffc;
+  --color-primary-soft-strong: #cfdaf8;
+  /* Halo de foco: o mesmo azul a 18% — vidro, não tinta. */
+  --color-primary-ring: rgb(7 54 194 / 18%);
   --color-accent: #f97316;
 
   /* ---------- Cores: superfícies ---------- */
-  --color-background: #f5f7f7;
+  --color-background: #f4f6f9;
   --color-surface: #ffffff;
-  --color-surface-alt: #eef2f2;
-  --color-border: #dfe4e5;
-  --color-border-strong: #c3cbcd;
-  --color-overlay: rgb(15 30 32 / 55%);
+  --color-surface-alt: #f1f3f7;
+  --color-border: #e7eaf0;
+  --color-border-strong: #d3d8e2;
+  --color-overlay: rgb(13 16 23 / 55%);
+
+  /* ---------- Cores: navegação escura ----------
+     A sidebar (e o drawer no celular) é a única área escura do sistema. Os tons
+     têm uma pitada de azul para conversar com a marca sem virar "azul escuro". */
+  --color-nav-surface: #0d1017;
+  --color-nav-surface-alt: #171b24;
+  --color-nav-border: rgb(255 255 255 / 8%);
+  --color-nav-text: #a2aab9;
+  --color-nav-text-strong: #ffffff;
+  --color-nav-hover: rgb(255 255 255 / 6%);
 
   /* ---------- Cores: texto ---------- */
-  --color-text: #14191c;
-  --color-text-muted: #64726f;
+  --color-text: #0f1420;
+  --color-text-muted: #6b7382;
+  /* Terceiro nível: ícone auxiliar, marca d'água, texto de apoio de apoio. */
+  --color-text-subtle: #98a0af;
   --color-text-inverse: #ffffff;
 
-  /* ---------- Cores: estado ---------- */
-  --color-success: #15803d;
-  --color-success-soft: #dcfce7;
-  --color-danger: #b91c1c;
-  --color-danger-hover: #991b1b;
-  --color-danger-soft: #fde8e8;
+  /* ---------- Cores: estado ----------
+     Retonalizadas para conviver com o azul sem competir com ele. */
+  --color-success: #067647;
+  --color-success-soft: #e6f6ee;
+  --color-danger: #c62828;
+  --color-danger-hover: #a51f1f;
+  --color-danger-soft: #fdecec;
   --color-warning: #b45309;
-  --color-warning-soft: #fef3c7;
-  --color-info: #0369a1;
-  --color-info-soft: #e0f2fe;
+  --color-warning-soft: #fdf3e2;
+  /* Info virou TEAL: com a marca azul, um "info" azul viraria a mesma cor da
+     ação principal e o usuário perderia a distinção entre destaque e aviso. */
+  --color-info: #0e7490;
+  --color-info-soft: #e2f3f6;
+  /* Roxo do atleta patrocinado: ele não é sucesso, erro nem alerta — é uma
+     categoria à parte, e precisa de uma cor que ninguém mais use. */
+  --color-sponsored: #6d28d9;
+  --color-sponsored-soft: #f0ebfd;
 
-  /* ---------- Tipografia ---------- */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+  /* ---------- Tipografia ----------
+     Inter, hospedada em assets/fonts (ver base.css). A pilha do sistema fica
+     como reserva: se a fonte não carregar, a tela continua legível. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
 
   --font-size-xs: 0.75rem; /* 12px */
@@ -54,6 +89,9 @@
   --line-height-tight: 1.2;
   --line-height-base: 1.5;
 
+  /* Título grande com letra apertada e rótulo pequeno com letra aberta: é o que
+     dá a hierarquia sem precisar de mais tamanhos de fonte. */
+  --letter-spacing-tight: -0.018em;
   --letter-spacing-wide: 0.04em;
 
   /* ---------- Espaçamento (escala de 4px) ---------- */
@@ -70,31 +108,40 @@
 
   /* ---------- Bordas e raios ---------- */
   --border-width: 1px;
-  --radius-sm: 6px;
+  --radius-sm: 8px;
   --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
   --radius-full: 999px;
 
-  /* ---------- Sombras ---------- */
-  --shadow-sm: 0 1px 2px rgb(15 30 32 / 6%);
-  --shadow-md: 0 2px 8px rgb(15 30 32 / 8%);
-  --shadow-lg: 0 12px 32px rgb(15 30 32 / 16%);
+  /* ---------- Sombras ----------
+     Quase invisíveis de propósito: o que separa um card do fundo aqui é a borda
+     de 1px; a sombra só tira o card do plano, não o levanta da mesa. */
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 4%);
+  --shadow-md: 0 2px 6px rgb(16 24 40 / 6%), 0 1px 2px rgb(16 24 40 / 4%);
+  --shadow-lg: 0 16px 40px rgb(16 24 40 / 14%);
+  --shadow-nav: 0 8px 32px rgb(13 16 23 / 32%);
 
   /* ---------- Layout ---------- */
-  --sidebar-width: 248px;
-  --bottom-nav-height: 66px;
+  --sidebar-width: 260px;
+  --topbar-height: 60px;
   --header-height: 60px;
-  --content-max-width: 1120px;
+  --content-max-width: 1180px;
   --tap-target: 44px;
 
   /* ---------- Movimento ---------- */
   --transition-fast: 120ms ease;
   --transition-base: 180ms ease;
+  /* Curva de saída para painéis: começa rápido e freia — é o que faz o drawer
+     parecer que tem peso em vez de aparecer de um salto. */
+  --transition-panel: 260ms cubic-bezier(0.32, 0.72, 0, 1);
 
   /* ---------- Camadas ---------- */
-  --z-sidebar: 20;
+  --z-sidebar: 40;
   --z-header: 25;
-  --z-bottom-nav: 30;
+  --z-topbar: 30;
+  --z-overlay: 35;
+  --z-menu: 45;
   --z-modal: 50;
   --z-toast: 60;
 }

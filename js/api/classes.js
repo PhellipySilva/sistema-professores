@@ -2,7 +2,7 @@
 
 import { supabase } from '../supabase.js';
 
-const CLASS_COLUMNS = 'id, name, category, created_at';
+const CLASS_COLUMNS = 'id, name, category, capacity, created_at';
 const SCHEDULE_COLUMNS = 'id, class_id, day_of_week, start_time, end_time';
 
 /* ============================================================
@@ -42,10 +42,10 @@ export async function getClass(userId, classId) {
  * @param {object[]} [input.enrollments]  [{ student_id, days_of_week }] — matrícula
  *                                        junto com a criação da turma
  */
-export async function createClass(userId, { name, category, schedules, enrollments }) {
+export async function createClass(userId, { name, category, capacity, schedules, enrollments }) {
   const { data: created, error } = await supabase
     .from('classes')
-    .insert({ name, category, user_id: userId })
+    .insert({ name, category, capacity: capacity ?? null, user_id: userId })
     .select(CLASS_COLUMNS)
     .single();
 
@@ -60,10 +60,10 @@ export async function createClass(userId, { name, category, schedules, enrollmen
   return created;
 }
 
-export async function updateClass(userId, classId, { name, category, schedules, enrollments }) {
+export async function updateClass(userId, classId, { name, category, capacity, schedules, enrollments }) {
   const { error } = await supabase
     .from('classes')
-    .update({ name, category })
+    .update({ name, category, capacity: capacity ?? null })
     .eq('user_id', userId)
     .eq('id', classId);
 
@@ -279,6 +279,24 @@ export async function replaceEnrollments(userId, classId, enrollments) {
   );
 
   if (upsertError) throw upsertError;
+}
+
+/**
+ * Quantos alunos ativos a turma tem AGORA.
+ *
+ * `head: true` traz só o total, sem as linhas: é a pergunta que a checagem de
+ * vaga faz depois de uma remoção, e ela não precisa de nome nenhum.
+ */
+export async function countActiveStudents(userId, classId) {
+  const { count, error } = await supabase
+    .from('class_students')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('class_id', classId)
+    .eq('active', true);
+
+  if (error) throw error;
+  return count ?? 0;
 }
 
 /** Remover é desativar: preserva o histórico de frequência daquela turma. */

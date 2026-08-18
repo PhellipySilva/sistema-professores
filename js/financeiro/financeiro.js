@@ -102,11 +102,17 @@ export function billingStartDate(student, payments) {
  *   3. não há pagamento registrado para ele;
  *   4. o vencimento já passou.
  *
- * @param {object}   student   precisa de monthly_fee_cents, due_day e created_at
+ * O atleta patrocinado sai antes de tudo: ele não tem obrigação de pagamento,
+ * então não pode aparecer nem como 'ok' (que sugere mensalidade quitada) nem
+ * como 'overdue'. Mensalidade e vencimento continuam gravados no cadastro dele,
+ * apenas ignorados enquanto o patrocínio durar.
+ *
+ * @param {object}   student   precisa de sponsored, monthly_fee_cents, due_day e created_at
  * @param {object[]} payments  pagamentos do aluno (qualquer período; a função filtra)
- * @returns {'ok' | 'overdue' | 'none'}  'none' = aluno sem mensalidade configurada
+ * @returns {'sponsored' | 'ok' | 'overdue' | 'none'}  'none' = sem mensalidade configurada
  */
 export function studentFinancialStatus(student, payments, todayIso = todayISO()) {
+  if (student.sponsored) return 'sponsored';
   if (!student.monthly_fee_cents || !student.due_day) return 'none';
 
   const paidMonths = new Set(
@@ -128,7 +134,23 @@ export function studentFinancialStatus(student, payments, todayIso = todayISO())
 }
 
 export function financialStatusLabel(status) {
-  return { ok: 'Em dia', overdue: 'Atrasado', none: 'Sem mensalidade' }[status] ?? '';
+  return {
+    ok: 'Em dia',
+    overdue: 'Atrasado',
+    none: 'Sem mensalidade',
+    sponsored: 'Patrocinado',
+  }[status] ?? '';
+}
+
+/**
+ * O aluno gera cobrança neste momento?
+ *
+ * Uma pergunta só, num lugar só: quem soma o previsto, quem lista vencimentos e
+ * quem oferece o aluno no modal de pagamento fazem todos a MESMA pergunta —
+ * e passam a mudar juntos se a regra mudar.
+ */
+export function isBillable(student) {
+  return Boolean(!student.sponsored && student.monthly_fee_cents && student.due_day);
 }
 
 /** Agrupa uma lista de pagamentos por student_id → array de pagamentos. */
@@ -187,5 +209,68 @@ export function buildInitialPayment({ referenceMonth, monthlyFeeCents, dueDay },
     amount_cents: monthlyFeeCents,
     due_date: dueDate,
     paid_date: dueDate <= todayIso ? dueDate : todayIso,
+  };
+}
+
+/* ============================================================
+   Resumo financeiro do mês (dashboard)
+   ============================================================ */
+
+/**
+ * Previsto, recebido, a receber e as contagens de alunos do mês corrente.
+ *
+ * As três quantias respondem a perguntas DIFERENTES, e é isso que faz a conta
+ * ser útil:
+ *
+ *   previsto  — soma das mensalidades de quem é cobrável hoje (`isBillable`).
+ *               Sai do cadastro do aluno, não de lançamento nenhum.
+ *   recebido  — soma do que foi REGISTRADO como pago no mês de referência.
+ *               Mensalidade cadastrada não vira recebimento sozinha: sem a baixa
+ *               do professor, o dinheiro não existe para esta conta.
+ *   a receber — previsto − recebido, nunca negativo.
+ *
+ * O piso em zero cobre o mês em que se recebe mais do que se previa — alguém
+ * que quitou um mês atrasado junto, ou que virou patrocinado depois de já ter
+ * pago. Dinheiro recebido é fato e continua somando; "a receber" é uma
+ * previsão, e previsão negativa não significa nada para o professor.
+ *
+ * @param {object[]} students  alunos do professor (com sponsored e monthly_fee_cents)
+ * @param {object[]} payments  pagamentos recentes (precisam trazer amount_cents)
+ */
+export function monthlySummary(students, payments, todayIso = todayISO()) {
+  const month = startOfMonth(todayIso);
+
+  let expectedCents = 0;
+  let payingCount = 0;
+  let sponsoredCount = 0;
+
+  for (const student of students) {
+    if (student.sponsored) {
+      sponsoredCount += 1;
+      continue;
+    }
+    if (!isBillable(student)) continue;
+
+    expectedCents += student.monthly_fee_cents;
+    payingCount += 1;
+  }
+
+  let receivedCents = 0;
+
+  for (const payment of payments) {
+    if (payment.reference_month !== month) continue;
+    if (!payment.paid_date) continue;
+
+    receivedCents += payment.amount_cents ?? 0;
+  }
+
+  return {
+    month,
+    expectedCents,
+    receivedCents,
+    toReceiveCents: Math.max(0, expectedCents - receivedCents),
+    studentCount: students.length,
+    payingCount,
+    sponsoredCount,
   };
 }

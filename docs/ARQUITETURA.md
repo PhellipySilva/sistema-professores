@@ -33,7 +33,7 @@ Navegador
    │
    ├─ pages/alunos.html          ← documento
    │     └─ js/alunos/alunos.js  ← controller da página (entry point ES module)
-   │           ├─ js/app.js            → guarda de sessão + layout (sidebar/nav/header)
+   │           ├─ js/app.js            → guarda de sessão + layout (sidebar/topbar/perfil)
    │           ├─ js/api/students.js   → TODA query Supabase deste domínio
    │           ├─ js/alunos/alunos-ui.js → render/DOM puro
    │           ├─ js/components/*      → modal, toast, confirm, empty-state, loading
@@ -94,7 +94,7 @@ manipulação do DOM no mesmo arquivo."*
 │   ├── reset.css
 │   ├── variables.css           # design tokens (seção 25)
 │   ├── base.css
-│   ├── layout.css              # shell: sidebar / header / bottom-nav / container
+│   ├── layout.css              # shell: sidebar-drawer / topbar / perfil / container
 │   ├── components.css          # botões, cards, badges, modal, toast, inputs
 │   └── responsive.css          # breakpoints e viradas tabela→card
 │
@@ -114,7 +114,7 @@ manipulação do DOM no mesmo arquivo."*
 │   │   └── dashboard.js        # consultas agregadas da home
 │   │
 │   ├── components/
-│   │   ├── layout.js           # ⚠️ NOVO — injeta sidebar+header+bottom-nav
+│   │   ├── layout.js           # ⚠️ NOVO — injeta sidebar-drawer + topbar + perfil
 │   │   ├── modal.js
 │   │   ├── toast.js
 │   │   ├── confirm-dialog.js
@@ -205,6 +205,7 @@ Criado automaticamente por trigger em `auth.users` (item 6).
 | guardian_name | text | obrigatório na UI quando `category='kids'` |
 | monthly_fee_cents | integer | `CHECK (> 0)`, nullable |
 | due_day | smallint | `CHECK (BETWEEN 1 AND 31)` — ampliado por `0004_due_day_31.sql` |
+| sponsored | boolean NOT NULL | default `false` — atleta patrocinado (`0006`) |
 | created_at / updated_at | timestamptz | |
 | | | `UNIQUE (id, user_id)` ← alvo das FKs compostas |
 
@@ -214,6 +215,11 @@ Criado automaticamente por trigger em `auth.users` (item 6).
 **⚠️ Não incluído: `active`.** O dashboard fala em "alunos ativos", mas o MVP não tem fluxo de
 inativação (só exclusão, seção 9). No MVP, *aluno ativo = aluno cadastrado*. Ver decisão 17.4.
 
+**`sponsored` é coluna, e não um valor de status.** Status financeiro aqui é sempre calculado
+(ver payments e item 14); "patrocinado" não é resultado de conta nenhuma, é um fato do cadastro.
+Marcar alguém como patrocinado **não apaga** `monthly_fee_cents` nem `due_day`: os dois ficam
+guardados e ignorados pelo cálculo, e voltam a valer se o patrocínio terminar.
+
 ### classes
 | coluna | tipo | notas |
 |---|---|---|
@@ -221,6 +227,7 @@ inativação (só exclusão, seção 9). No MVP, *aluno ativo = aluno cadastrado
 | user_id | uuid NOT NULL | |
 | name | text NOT NULL | |
 | category | text NOT NULL | `CHECK IN ('kids','adulto')` |
+| capacity | smallint | vagas da turma; `NULL` = sem limite declarado (`0006`) |
 | created_at / updated_at | timestamptz | |
 | | | `UNIQUE (id, user_id)` |
 
@@ -315,6 +322,48 @@ calcular corretamente"). O status sai de `paid_date` + `due_date` + hoje. Ver it
 
 `reference_month` como `date` (e não `text 'AGO/2026'`) permite ordenar, filtrar por intervalo e
 comparar sem parsing.
+
+### waitlist_entries
+| coluna | tipo | notas |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid NOT NULL | |
+| name | text NOT NULL | |
+| phone | text NOT NULL | contato é obrigatório aqui — sem ele a fila não serve |
+| class_id | uuid | FK **simples** → `classes(id)` `ON DELETE SET NULL` |
+| desired_slot | text NOT NULL | horário desejado em texto, sobrevive à exclusão da turma |
+| notes | text | |
+| status | text NOT NULL | `waiting` / `contacted` / `enrolled` / `removed` |
+| student_id | uuid | preenchido quando a pessoa vira aluno |
+| created_at / updated_at | timestamptz | |
+
+**Tabela própria, e não uma flag em `students`.** Quem está na fila ainda não é aluno: não tem
+categoria, não tem mensalidade, não entra em chamada e não pode aparecer nas contas do mês.
+
+**⚠️ Sem coluna `position`.** A ordem da fila é `created_at`. Uma coluna de posição teria que ser
+renumerada a cada saída — trabalho extra para reproduzir o que a data de entrada já diz.
+
+FKs simples (não compostas) porque `ON DELETE SET NULL` anularia `user_id` junto — a mesma razão
+explicada em `makeups`.
+
+### waitlist_notifications
+| coluna | tipo | notas |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid NOT NULL | |
+| class_id | uuid NOT NULL | FK composta CASCADE |
+| student_name | text | quem saiu da turma, só para o professor lembrar do porquê |
+| status | text NOT NULL | `new` / `seen` / `resolved` |
+| created_at / updated_at | timestamptz | |
+| | | `UNIQUE (class_id) WHERE status <> 'resolved'` |
+
+**O índice único parcial É a regra antiduplicação.** Só existe uma notificação em aberto por
+turma: enquanto o professor não resolver o aviso, nenhuma outra saída cria um segundo card
+dizendo a mesma coisa. Garantido pelo banco, e não por uma conferência do frontend.
+
+**Quem está esperando não é congelado na notificação.** A tela cruza o aviso com
+`waitlist_entries` na hora de exibir — assim quem entrou na fila depois aparece, e quem já foi
+matriculado some, sem nada para sincronizar.
 
 ### lesson_plans
 | coluna | tipo | notas |
@@ -434,7 +483,7 @@ login.html
 qualquer página protegida
   └─ app.js: initPage()
         ├─ const session = await requireAuth()      // redireciona se não houver
-        ├─ renderLayout(session, paginaAtual)       // sidebar + header + bottom-nav
+        ├─ renderLayout(session, paginaAtual)       // sidebar-drawer + topbar + perfil
         └─ devolve o controle ao controller da página
 ```
 
@@ -614,7 +663,55 @@ aluno.html → [Registrar pagamento]
   — a **única** divisão do sistema, e ela acontece na borda da tela.
 - `UNIQUE (student_id, reference_month)` impede lançar agosto duas vezes.
 
+### Os três valores do mês (dashboard)
+
+```
+previsto  = Σ monthly_fee_cents de quem é cobrável hoje  (isBillable)
+recebido  = Σ amount_cents dos payments do mês com paid_date preenchido
+a receber = max(0, previsto − recebido)
+```
+
+Previsto vem do **cadastro**; recebido vem do **lançamento**. Mensalidade cadastrada não vira
+recebimento sozinha: sem a baixa do professor, o dinheiro não existe para esta conta — é o que
+separa "esperado" de "entrou". O piso em zero cobre o mês em que se recebe mais do que se previa
+(alguém quitou um mês atrasado junto): recebido é fato e continua somando, mas previsão negativa
+não significa nada.
+
+`isBillable` (um lugar só) responde "este aluno gera cobrança agora?" — e é o mesmo filtro usado
+pelo previsto, pelos próximos vencimentos e pelo seletor do modal de pagamento. Atleta
+patrocinado responde não, e por isso não aparece em nenhum dos três.
+
 Fora do MVP (seção 12): Pix, boleto, cartão, cobrança automática, WhatsApp.
+
+---
+
+## 11b. Fluxo da lista de espera e do aviso de vaga
+
+```
+turma.html → [Remover aluno]
+   └─ removeStudentFromClass (active = false)
+   └─ notifyVacancy(userId, { turma, studentName })
+        ├─ fila da turma vazia?          → não faz nada
+        ├─ turma ainda cheia (capacity)? → não faz nada
+        └─ insert em waitlist_notifications
+             └─ duplicata barrada pelo índice único parcial → devolve null
+```
+
+A pergunta da fila vem **primeiro**: sem ninguém esperando não há aviso a dar, e a contagem de
+matriculados nem chega a ser feita. O caso comum (turma sem fila) custa uma consulta, não duas.
+
+Três caminhos removem aluno de turma — a página da turma, a edição em massa da turma e a exclusão
+do aluno — e os três chamam a mesma função (`js/lista-espera/notificacoes.js`), para nenhum deles
+deixar a fila sem resposta. Na exclusão do aluno, as turmas dele são lidas **antes** do delete:
+depois, o vínculo já foi embora em cascata.
+
+**O sistema nunca matricula ninguém sozinho.** O aviso informa; quem decide é o professor. O botão
+"Adicionar à turma" abre o mesmo formulário de cadastro de aluno, já preenchido com nome, telefone
+e turma desejada — o aluno que entra pela fila nasce com categoria, mensalidade e vencimento como
+qualquer outro.
+
+Estados do aviso: `new` (vermelho) → `seen` (amarelo, marcado ao abrir a tela) → `resolved`
+(verde, escolha do professor). Ele **não** some sozinho.
 
 ---
 
@@ -707,23 +804,37 @@ Ver decisão 17.5 sobre a janela de meses considerada.
 maiores.
 
 ```
-≤ 640px   celular   bottom nav (5 ícones) · cards · 1 coluna · modal ocupa a tela inteira
-641–1023  tablet    bottom nav · grid de 2 colunas
-≥ 1024px  desktop   sidebar fixa 240px · tabelas de verdade · modal centralizado
+≤ 480px   celular   drawer (☰) · 1 coluna em tudo · modal ocupa a tela inteira
+481–640   celular   drawer · indicadores em 2 colunas · tabela vira card
+641–1023  tablet    drawer · grid de 2 colunas · indicadores em 4
+≥ 1024px  desktop   sidebar fixa 260px sempre visível · tabelas de verdade · modal centralizado
 ```
 
 Decisões:
 
-- **Bottom nav no celular, sidebar no desktop.** Menu hambúrguer exige dois toques e fica no topo,
-  longe do polegar. A barra inferior tem 5 itens (Dashboard, Alunos, Turmas, Agenda, Planos), que é
-  exatamente a navegação da seção 24. Responde direto ao teste "estou na quadra com o celular".
+- **Sidebar em drawer no celular, fixa no desktop — o MESMO elemento.** A `<aside class="sidebar">`
+  existe uma vez só: no celular ela nasce em `translateX(-100%)` e entra deslizando com `is-open`;
+  no desktop a media query anula a transformação. Não há uma segunda navegação para telas pequenas
+  para manter em sincronia — há um HTML e dois CSS.
+
+  > **⚠️ Isto inverteu a decisão original**, que era bottom nav no celular. O argumento a favor da
+  > barra inferior continua verdadeiro (um toque em vez de dois, e perto do polegar de quem está
+  > na quadra); a troca foi uma escolha de direção visual do dono do produto, e o custo é esse
+  > toque a mais. Se um dia ele pesar mais que a estética, a barra volta sem tocar em `layout.js`:
+  > os cinco itens continuam saindo de `NAV_ITEMS`.
+
+- **Uma coluna abaixo de 480px.** Não é só estética: o card de indicador tem ícone + rótulo +
+  valor monetário, e item de grade nasce com `min-width: auto` — espremido em duas colunas num
+  aparelho de 360px ele se recusa a encolher e empurra a página para o lado. Medido em iframe de
+  320 e 390px (`tests/preview-mobile.html`): sobra zero.
 - **Tabela vira card abaixo de 640px** (seção 26). Uma classe `.data-table` com regra
   `@media (max-width: 640px)` que muda `display` e usa `data-label` nos `<td>` — sem duplicar HTML.
 - **Alvos de toque ≥ 44px**; os botões da chamada em 56px.
-- `padding-bottom: env(safe-area-inset-bottom)` na bottom nav (iPhone).
+- `env(safe-area-inset-top)` na topbar e `env(safe-area-inset-bottom)` no rodapé do drawer e do
+  modal (iPhone com entalhe).
 - `font-size: 16px` nos inputs — abaixo disso o iOS dá zoom automático ao focar.
 - Tokens em `variables.css` (seção 25): cores, tipografia, espaçamento, raios, sombras. Nenhum
-  valor solto no CSS.
+  valor solto no CSS. Trocar a cor da marca é editar `--color-primary` e as duas variações dela.
 
 ---
 

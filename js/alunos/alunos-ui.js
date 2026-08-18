@@ -3,7 +3,7 @@
 
 import { el } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
-import { selectField, showFieldErrors, textField } from '../components/form.js';
+import { checkboxField, selectField, showFieldErrors, textField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
 import { CATEGORIES, centsToInputValue, formatCategory, formatCurrency, formatPhone, normalizePhone, parseCurrencyToCents } from '../utils/formatters.js';
 import { financialStatusLabel, selectableReferenceMonths } from '../financeiro/financeiro.js';
@@ -22,8 +22,17 @@ import {
    Badge de situação financeira
    ============================================================ */
 
+/* O patrocinado tem cor PRÓPRIA, e não uma das três já existentes, porque a
+   pergunta que ele responde é outra: "em dia" e "atrasado" falam de uma dívida
+   que existe; "patrocinado" diz que não há dívida nenhuma a acompanhar. */
 export function financialBadge(status) {
-  const variant = { ok: 'success', overdue: 'danger', none: 'neutral' }[status] ?? 'neutral';
+  const variant = {
+    ok: 'success',
+    overdue: 'danger',
+    none: 'neutral',
+    sponsored: 'sponsored',
+  }[status] ?? 'neutral';
+
   return el('span', { class: `badge badge--${variant}`, text: financialStatusLabel(status) });
 }
 
@@ -105,6 +114,8 @@ const NEW_CLASS = '__nova__';
 
 /**
  * @param {object|null}  options.student        null = cadastro novo
+ * @param {object}       [options.defaults]     { name, phone, classId } para pré-preencher
+ *                                              um cadastro novo (vem da lista de espera)
  * @param {object[]}     [options.classes]      turmas existentes, para o select
  * @param {Function}     options.onSave         async (payload, extras) => void
  * @param {Function}     [options.onCreateClass] async (dadosDaTurma) => turma criada
@@ -113,14 +124,14 @@ const NEW_CLASS = '__nova__';
  * Na edição, turma e pagamento são gerenciados nas telas próprias, para o
  * formulário não virar dois assuntos ao mesmo tempo.
  */
-export function openStudentModal({ student, classes = [], onSave, onCreateClass }) {
+export function openStudentModal({ student, defaults = {}, classes = [], onSave, onCreateClass }) {
   const isEdit = Boolean(student);
 
   const fields = [
     textField({
       name: 'name',
       label: 'Nome completo',
-      value: student?.name ?? '',
+      value: student?.name ?? defaults.name ?? '',
       placeholder: 'Ex.: João Silva',
       autocomplete: 'name',
       required: true,
@@ -129,7 +140,7 @@ export function openStudentModal({ student, classes = [], onSave, onCreateClass 
       name: 'phone',
       label: 'Telefone',
       type: 'tel',
-      value: student?.phone ? formatPhone(student.phone) : '',
+      value: student?.phone ? formatPhone(student.phone) : (defaults.phone ?? ''),
       placeholder: '(82) 99999-9999',
       inputmode: 'tel',
       autocomplete: 'tel',
@@ -147,38 +158,65 @@ export function openStudentModal({ student, classes = [], onSave, onCreateClass 
       placeholder: 'Nome do responsável',
       hint: 'Obrigatório para alunos da categoria Kids.',
     }),
-    textField({
-      name: 'monthly_fee',
-      label: 'Mensalidade',
-      value: centsToInputValue(student?.monthly_fee_cents),
-      placeholder: '150,00',
-      inputmode: 'decimal',
-      hint: 'Deixe em branco se este aluno não paga mensalidade.',
-    }),
-    textField({
-      name: 'due_day',
-      label: 'Dia de vencimento',
-      type: 'number',
-      value: student?.due_day ?? '',
-      placeholder: '10',
-      inputmode: 'numeric',
-      min: 1,
-      max: 31,
-      hint: 'Entre 1 e 31. Em meses mais curtos, vence no último dia.',
-    }),
   ];
 
+  const sponsoredField = checkboxField({
+    name: 'sponsored',
+    label: 'Atleta patrocinado',
+    checked: student?.sponsored ?? false,
+    hint: 'Atleta bancado pelo projeto: não paga mensalidade, não é cobrado e nunca aparece como atrasado.',
+  });
+
+  const feeField = textField({
+    name: 'monthly_fee',
+    label: 'Mensalidade',
+    value: centsToInputValue(student?.monthly_fee_cents),
+    placeholder: '150,00',
+    inputmode: 'decimal',
+    hint: 'Deixe em branco se este aluno não paga mensalidade.',
+  });
+
+  const dueDayField = textField({
+    name: 'due_day',
+    label: 'Dia de vencimento',
+    type: 'number',
+    value: student?.due_day ?? '',
+    placeholder: '10',
+    inputmode: 'numeric',
+    min: 1,
+    max: 31,
+    hint: 'Entre 1 e 31. Em meses mais curtos, vence no último dia.',
+  });
+
+  fields.push(formSectionTitle('Financeiro'), sponsoredField, feeField, dueDayField);
+
   let classSelect = null;
+  let lastPaymentField = null;
 
   if (!isEdit) {
-    classSelect = buildClassField(classes, onCreateClass);
+    classSelect = buildClassField(classes, onCreateClass, defaults.classId);
+    lastPaymentField = buildLastPaymentField();
 
     fields.push(
       formSectionTitle('Matrícula e situação inicial'),
       classSelect.field,
-      buildLastPaymentField(),
+      lastPaymentField,
     );
   }
+
+  /* Marcar "patrocinado" esconde os campos de cobrança: eles não valem para
+     esse aluno. Os VALORES continuam no formulário e continuam sendo salvos —
+     é o que faz o cadastro voltar inteiro (mensalidade e vencimento) no dia em
+     que o patrocínio terminar, sem o professor ter que digitar tudo de novo. */
+  const billingFields = [feeField, dueDayField, lastPaymentField].filter(Boolean);
+  const sponsoredInput = sponsoredField.querySelector('input');
+
+  const syncBillingFields = () => {
+    for (const field of billingFields) field.classList.toggle('hidden', sponsoredInput.checked);
+  };
+
+  sponsoredInput.addEventListener('change', syncBillingFields);
+  syncBillingFields();
 
   return openFormModal({
     title: isEdit ? 'Editar aluno' : 'Novo aluno',
@@ -187,13 +225,15 @@ export function openStudentModal({ student, classes = [], onSave, onCreateClass 
     onSubmit: async (form) => {
       const values = readStudentForm(form);
 
+      // Aluno patrocinado não tem cobrança a validar: os campos estão escondidos,
+      // e o que houver neles é histórico guardado, não exigência.
       const errors = {
         name: validateName(values.name),
         phone: validatePhone(values.phoneRaw),
         category: validateCategory(values.category),
         guardian_name: validateGuardianName(values.guardian_name, values.category),
-        monthly_fee: validateMonthlyFee(values.monthlyFeeRaw),
-        due_day: validateDueDay(values.dueDayRaw),
+        monthly_fee: values.sponsored ? null : validateMonthlyFee(values.monthlyFeeRaw),
+        due_day: values.sponsored ? null : validateDueDay(values.dueDayRaw),
       };
 
       // O pagamento inicial precisa de valor e vencimento para existir.
@@ -231,7 +271,7 @@ function formSectionTitle(text) {
  * nativo empilha, então o modal de cima recebe o foco e o de baixo continua
  * intacto com o que já foi digitado.
  */
-function buildClassField(classes, onCreateClass) {
+function buildClassField(classes, onCreateClass, selectedClassId) {
   const options = classes.map((turma) => ({
     value: turma.id,
     label: `${turma.name} · ${formatCategory(turma.category)}`,
@@ -246,11 +286,12 @@ function buildClassField(classes, onCreateClass) {
     label: 'Turma',
     placeholder: 'Sem turma por enquanto',
     options,
+    value: selectedClassId ?? '',
     hint: 'Opcional. Você pode matricular depois, na página da turma.',
   });
 
   const select = field.querySelector('select');
-  let previousValue = '';
+  let previousValue = selectedClassId ?? '';
 
   select.addEventListener('change', async () => {
     if (select.value !== NEW_CLASS) {
@@ -314,6 +355,8 @@ function readStudentForm(form) {
   const monthlyFeeRaw = get('monthly_fee');
   const dueDayRaw = get('due_day');
 
+  const sponsored = form.elements.sponsored?.checked ?? false;
+
   const classId = get('class_id');
   const lastPaidMonth = get('last_paid_month');
 
@@ -324,15 +367,21 @@ function readStudentForm(form) {
     guardian_name,
     monthlyFeeRaw,
     dueDayRaw,
+    sponsored,
     classId: classId && classId !== NEW_CLASS ? classId : null,
-    lastPaidMonth: lastPaidMonth || null,
+    // Patrocinado não gera lançamento de mensalidade, mesmo que o campo
+    // escondido ainda tenha um mês selecionado.
+    lastPaidMonth: sponsored ? null : lastPaidMonth || null,
     payload: {
       name,
       phone: normalizePhone(phoneRaw),
       category,
       guardian_name: guardian_name || null,
+      // Mensalidade e vencimento são gravados mesmo com o patrocínio ligado:
+      // ficam guardados, ignorados pelo cálculo, prontos para quando ele acabar.
       monthly_fee_cents: monthlyFeeRaw ? parseCurrencyToCents(monthlyFeeRaw) : null,
       due_day: dueDayRaw ? Number(dueDayRaw) : null,
+      sponsored,
     },
   };
 }
@@ -359,12 +408,14 @@ export function studentSummaryCard(student, financialStatus) {
   }
 
   rows.push(
-    infoRow(
-      'Mensalidade',
-      student.monthly_fee_cents
-        ? `${formatCurrency(student.monthly_fee_cents)} · vence dia ${student.due_day ?? '—'}`
-        : '',
-    ),
+    student.sponsored
+      ? infoRow('Mensalidade', 'Atleta patrocinado — sem cobrança')
+      : infoRow(
+          'Mensalidade',
+          student.monthly_fee_cents
+            ? `${formatCurrency(student.monthly_fee_cents)} · vence dia ${student.due_day ?? '—'}`
+            : '',
+        ),
   );
 
   return el('section', { class: 'card' }, [

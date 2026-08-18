@@ -27,7 +27,9 @@ export async function listPaymentsForStudent(userId, studentId) {
 export async function listPaymentsSince(userId, sinceMonthIso) {
   const { data, error } = await supabase
     .from('payments')
-    .select('student_id, reference_month, due_date, paid_date')
+    // amount_cents entra aqui porque a dashboard soma o RECEBIDO do mês a partir
+    // do que foi efetivamente lançado, e não da mensalidade cadastrada.
+    .select('student_id, amount_cents, reference_month, due_date, paid_date')
     .eq('user_id', userId)
     .gte('reference_month', sinceMonthIso);
 

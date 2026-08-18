@@ -10,6 +10,7 @@ import { showSkeletons } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, render } from '../utils/dom.js';
 import { classCard, openClassModal } from './turmas-ui.js';
+import { notifyVacancy } from '../lista-espera/notificacoes.js';
 
 const { user } = await initPage('turmas');
 
@@ -19,6 +20,13 @@ const content = $('#page-content');
 let allStudents = [];
 
 $('#page-actions').append(
+  // A lista de espera é assunto de turma, então a porta de entrada dela fica
+  // aqui — a navegação principal continua com os mesmos cinco itens.
+  el('a', {
+    class: 'btn btn--secondary',
+    href: '/pages/lista-espera.html',
+    html: `${icon('bell', 18)}<span class="btn__label">Lista de espera</span>`,
+  }),
   el('button', {
     type: 'button',
     class: 'btn btn--primary',
@@ -113,9 +121,29 @@ async function openEdit(turma) {
         throw error;
       }
       toast.success('Turma atualizada.');
+
+      // Desmarcar alunos aqui é uma remoção como outra qualquer: se sobrou lugar
+      // e tem fila, o aviso precisa sair — senão a vaga só apareceria para quem
+      // usasse a tela da turma.
+      if (removedSomeone(enrollments, payload.enrollments)) {
+        try {
+          await notifyVacancy(user.id, { turma });
+        } catch (error) {
+          handleError(error, 'Não foi possível avisar a lista de espera.');
+        }
+      }
+
       await load();
     },
   });
+}
+
+/** Alguém que estava matriculado não está mais na lista salva? */
+function removedSomeone(before, after) {
+  if (!after) return false;
+
+  const kept = new Set(after.map((enrollment) => enrollment.student_id));
+  return before.some((enrollment) => !kept.has(enrollment.student_id));
 }
 
 async function confirmDelete(turma) {

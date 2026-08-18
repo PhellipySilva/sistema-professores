@@ -23,15 +23,24 @@ export function paymentBadge(payment) {
    Histórico de pagamentos no perfil do aluno
    ============================================================ */
 
-export function paymentHistorySection(payments, { onRegister }) {
+/**
+ * Histórico de pagamentos do aluno.
+ *
+ * `onRegister` ausente = sem botão de lançar. É assim que o perfil do atleta
+ * patrocinado se comporta: o histórico dele continua inteiro e visível, mas não
+ * há cobrança nova a registrar enquanto o patrocínio durar.
+ */
+export function paymentHistorySection(payments, { onRegister } = {}) {
   const header = el('div', { class: 'row-between section__header' }, [
     el('h2', { class: 'section__title', text: 'Pagamentos' }),
-    el('button', {
-      type: 'button',
-      class: 'btn btn--ghost btn--sm',
-      html: `${icon('plus', 16)}<span>Registrar</span>`,
-      onclick: onRegister,
-    }),
+    onRegister
+      ? el('button', {
+          type: 'button',
+          class: 'btn btn--ghost btn--sm',
+          html: `${icon('plus', 16)}<span>Registrar</span>`,
+          onclick: onRegister,
+        })
+      : el('span', { class: 'badge badge--sponsored', text: 'Sem cobrança' }),
   ]);
 
   const body = payments.length === 0

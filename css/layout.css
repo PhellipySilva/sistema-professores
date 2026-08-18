@@ -1,26 +1,367 @@
-/* Shell da aplicação: sidebar (desktop), bottom nav (celular), header e conteúdo.
-   O comportamento base aqui é o do CELULAR. O desktop é adicionado em responsive.css. */
+/* Shell da aplicação: sidebar escura, topbar com o perfil e área de conteúdo.
+   O comportamento base aqui é o do CELULAR — onde a sidebar é um drawer fechado.
+   O desktop (sidebar fixa e sempre visível) é adicionado em responsive.css. */
 
-/* ---------- Área principal ---------- */
+/* ============================================================
+   Topbar — a única barra fixa do sistema
+   ============================================================
+   `fixed`, e não `sticky`: ela é injetada dentro de #app-shell, um contêiner de
+   altura zero, e sticky dentro dele não teria contra o que grudar. */
+
+.topbar {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: var(--z-topbar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: calc(var(--topbar-height) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--space-3) 0;
+  background-color: var(--color-surface);
+  border-block-end: var(--border-width) solid var(--color-border);
+}
+
+/* Botão do menu — só no celular (ver responsive.css). */
+.topbar__menu {
+  display: grid;
+  place-items: center;
+  width: var(--tap-target);
+  height: var(--tap-target);
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  transition: background-color var(--transition-fast);
+}
+
+.topbar__menu:hover {
+  background-color: var(--color-surface-alt);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+/* Empurra o perfil para a direita, seja qual for o que existe à esquerda. */
+.topbar__spacer {
+  flex: 1;
+}
+
+/* ---------- Marca ---------- */
+
+.brand-logo {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.brand-logo--lg {
+  width: 38px;
+  height: 38px;
+}
+
+/* ============================================================
+   Perfil do usuário (topbar)
+   ============================================================ */
+
+.user-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 210px;
+  min-height: var(--tap-target);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  transition: background-color var(--transition-fast);
+}
+
+.user-chip:hover {
+  background-color: var(--color-surface-alt);
+}
+
+.user-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.user-chip__caret {
+  flex-shrink: 0;
+  color: var(--color-text-subtle);
+  transition: transform var(--transition-base);
+}
+
+.user-chip[aria-expanded='true'] .user-chip__caret {
+  transform: rotate(180deg);
+}
+
+/* Avatar: iniciais do nome. Sem upload de foto — o sistema não guarda imagem, e
+   duas letras num círculo azul identificam tão bem quanto e nunca falham. */
+.avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.avatar--lg {
+  width: 42px;
+  height: 42px;
+  font-size: var(--font-size-sm);
+}
+
+/* ---------- Painel do perfil ---------- */
+
+.user-menu__panel {
+  position: absolute;
+  inset-block-start: calc(100% + var(--space-2));
+  inset-inline-end: 0;
+  z-index: var(--z-menu);
+  width: min(264px, calc(100vw - var(--space-6)));
+  padding: var(--space-2);
+  background-color: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  transform-origin: top right;
+  animation: menu-in var(--transition-base);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+.user-menu__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-block-end: var(--border-width) solid var(--color-border);
+  padding-block-end: var(--space-3);
+}
+
+.user-menu__name {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+}
+
+.user-menu__email {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.user-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  color: var(--color-text);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.user-menu__item:hover {
+  background-color: var(--color-surface-alt);
+}
+
+.user-menu__item--danger:hover {
+  background-color: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+/* ============================================================
+   Sidebar / drawer
+   ============================================================
+   O MESMO elemento nas duas telas: no desktop fica fixo à vista; no celular
+   fica fora da tela e entra deslizando. Um só HTML, um só conjunto de links —
+   nada de duplicar a navegação para cada tamanho de tela. */
+
+.sidebar {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: var(--z-sidebar);
+  display: flex;
+  flex-direction: column;
+  width: min(var(--sidebar-width), 82vw);
+  padding: var(--space-4) var(--space-3) calc(var(--space-4) + env(safe-area-inset-bottom));
+  background-color: var(--color-nav-surface);
+  color: var(--color-nav-text);
+  box-shadow: var(--shadow-nav);
+
+  /* Fechado por padrão (celular). */
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform var(--transition-panel), visibility var(--transition-panel);
+}
+
+.sidebar.is-open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-5);
+}
+
+.sidebar__brand-name {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  color: var(--color-nav-text-strong);
+}
+
+.sidebar__brand-tagline {
+  font-size: var(--font-size-xs);
+  color: var(--color-nav-text);
+}
+
+/* Botão de fechar o drawer — só existe no celular. */
+.sidebar__close {
+  display: grid;
+  place-items: center;
+  width: var(--tap-target);
+  height: var(--tap-target);
+  margin-inline-start: auto;
+  border-radius: var(--radius-md);
+  color: var(--color-nav-text);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__close:hover {
+  background-color: var(--color-nav-hover);
+  color: var(--color-nav-text-strong);
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-nav-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__link svg {
+  flex-shrink: 0;
+}
+
+.sidebar__link:hover {
+  background-color: var(--color-nav-hover);
+  color: var(--color-nav-text-strong);
+}
+
+/* O item atual é O lugar do azul nesta barra — e o único. */
+.sidebar__link[aria-current='page'] {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-weight: var(--font-weight-semibold);
+}
+
+.sidebar__link[aria-current='page']:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.sidebar__link:focus-visible {
+  outline-color: var(--color-nav-text-strong);
+}
+
+.sidebar__footer {
+  margin-block-start: var(--space-3);
+  padding-block-start: var(--space-3);
+  border-block-start: var(--border-width) solid var(--color-nav-border);
+}
+
+/* Véu escuro atrás do drawer. Fica sempre no DOM e só troca de opacidade, para
+   a saída poder ser animada — um `display: none` cortaria a transição. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background-color: var(--color-overlay);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-panel), visibility var(--transition-panel);
+}
+
+.scrim.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ============================================================
+   Área principal
+   ============================================================ */
 
 .app-main {
   min-height: 100vh;
-  /* espaço para a bottom nav não cobrir o fim do conteúdo */
-  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + var(--space-6));
+  padding-block-start: calc(var(--topbar-height) + env(safe-area-inset-top));
+  padding-block-end: var(--space-10);
 }
 
+/* Cabeçalho da página: título grande sobre o fundo cinza, sem barra branca.
+   Ele rola junto com o conteúdo — quem fica no topo é só a topbar. */
 .page-header {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-header);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-3);
-  min-height: var(--header-height);
-  padding: var(--space-3) var(--space-4);
-  background-color: var(--color-surface);
-  border-bottom: var(--border-width) solid var(--color-border);
+  flex-wrap: wrap;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-4);
 }
 
 .page-header__titles {
@@ -28,15 +369,16 @@
 }
 
 .page-title {
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.015em;
+  letter-spacing: var(--letter-spacing-tight);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .page-subtitle {
+  margin-block-start: var(--space-1);
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
@@ -51,7 +393,7 @@
 .page-content {
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: var(--space-4);
+  padding: 0 var(--space-4) var(--space-6);
 }
 
 /* Botão de voltar nas páginas de detalhe. */
@@ -59,142 +401,20 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  min-height: var(--tap-target);
+  min-height: 28px;
   font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   color: var(--color-text-muted);
+  transition: color var(--transition-fast);
 }
 
 .back-link:hover {
-  color: var(--color-text);
-}
-
-/* ---------- Sidebar (só aparece no desktop) ---------- */
-
-.sidebar {
-  display: none;
-  position: fixed;
-  inset-block: 0;
-  inset-inline-start: 0;
-  z-index: var(--z-sidebar);
-  width: var(--sidebar-width);
-  flex-direction: column;
-  padding: var(--space-5) var(--space-3);
-  background-color: var(--color-surface);
-  border-inline-end: var(--border-width) solid var(--color-border);
-}
-
-.sidebar__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-2) var(--space-6);
-}
-
-.sidebar__logo {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border-radius: var(--radius-md);
-  background-color: var(--color-primary);
-  color: var(--color-text-inverse);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-sm);
-  letter-spacing: var(--letter-spacing-wide);
-}
-
-.sidebar__brand-name {
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-tight);
-}
-
-.sidebar__brand-tagline {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-}
-
-.sidebar__nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  flex: 1;
-}
-
-.sidebar__link {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--tap-target);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-
-.sidebar__link:hover {
-  background-color: var(--color-surface-alt);
-  color: var(--color-text);
-}
-
-.sidebar__link[aria-current='page'] {
-  background-color: var(--color-primary-soft);
-  color: var(--color-primary-active);
-  font-weight: var(--font-weight-semibold);
-}
-
-.sidebar__footer {
-  border-top: var(--border-width) solid var(--color-border);
-  padding-top: var(--space-3);
-}
-
-.sidebar__user {
-  padding: 0 var(--space-3) var(--space-2);
-  font-size: var(--font-size-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------- Bottom nav (celular e tablet) ---------- */
-
-.bottom-nav {
-  position: fixed;
-  inset-block-end: 0;
-  inset-inline: 0;
-  z-index: var(--z-bottom-nav);
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
-  background-color: var(--color-surface);
-  border-top: var(--border-width) solid var(--color-border);
-}
-
-.bottom-nav__link {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-}
-
-.bottom-nav__link[aria-current='page'] {
   color: var(--color-primary);
-  font-weight: var(--font-weight-semibold);
 }
 
-.bottom-nav__link svg {
-  width: 22px;
-  height: 22px;
-}
-
-/* ---------- Tela de login ---------- */
+/* ============================================================
+   Tela de login
+   ============================================================ */
 
 .auth {
   display: grid;
@@ -204,14 +424,16 @@
 }
 
 .auth__card {
-  width: min(400px, 100%);
-  padding: var(--space-6);
+  width: min(408px, 100%);
+  padding: var(--space-8) var(--space-6);
   background-color: var(--color-surface);
   border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
 }
 
+/* A marca no login tem classes próprias: as da sidebar são escritas para fundo
+   escuro, e o texto branco delas sumiria dentro do cartão branco. */
 .auth__brand {
   display: flex;
   align-items: center;
@@ -219,9 +441,20 @@
   margin-bottom: var(--space-8);
 }
 
+.auth__brand-name {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+}
+
+.auth__brand-tagline {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
 .auth__title {
   font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-tight);
 }
 
 .auth__subtitle {
@@ -229,7 +462,9 @@
   font-size: var(--font-size-sm);
 }
 
-/* ---------- Grades reutilizáveis ---------- */
+/* ============================================================
+   Grades reutilizáveis
+   ============================================================ */
 
 .grid {
   display: grid;

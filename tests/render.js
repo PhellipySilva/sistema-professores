@@ -12,6 +12,8 @@ import { classCard, openClassModal, scheduleSummary } from '../js/turmas/turmas-
 import { buildStudentPicker } from '../js/turmas/aluno-picker.js';
 import { attendanceRow, attendanceSummary, countStatuses } from '../js/agenda/frequencia.js';
 import { paymentHistorySection, paymentBadge } from '../js/financeiro/financeiro-ui.js';
+import { openWaitlistModal, vacancyCard, waitlistGroup } from '../js/lista-espera/lista-espera-ui.js';
+import { groupWaitlistByClass } from '../js/lista-espera/vagas.js';
 import { emptyState, errorState } from '../js/components/empty-state.js';
 import { textField, selectField, checkboxChips, showFieldErrors } from '../js/components/form.js';
 import { skeletonList, loadingBlock } from '../js/components/loading.js';
@@ -116,6 +118,8 @@ check('historico de pagamento mostra valor', () => has(paymentHistorySection([
   { id: 'p1', reference_month: '2026-08-01', amount_cents: 15000, due_date: '2026-08-10', paid_date: '2026-08-09' },
 ], { onRegister: noop }), 'R$'));
 check('historico vazio tem mensagem', () => has(paymentHistorySection([], { onRegister: noop }), 'Nenhum pagamento registrado'));
+check('patrocinado nao ganha botao de registrar', () => !paymentHistorySection([], {}).querySelector('button') || 'botao apareceu');
+check('patrocinado mantem o historico visivel', () => has(paymentHistorySection([{ id: 'p1', reference_month: '2026-07-01', amount_cents: 15000, due_date: '2026-07-10', paid_date: '2026-07-09' }], {}), 'Julho/2026'));
 
 /* ---------- Componentes base ---------- */
 check('emptyState mostra titulo', () => has(emptyState({ title: 'Nada aqui' }), 'Nada aqui'));
@@ -479,6 +483,137 @@ await checkAsync('criar turma entrega horarios e matriculas juntos', async () =>
   ];
   if (JSON.stringify(matriculas) !== JSON.stringify(esperado)) return JSON.stringify(matriculas);
   return true;
+});
+
+/* ---------- Atleta patrocinado ---------- */
+const patrocinado = { ...aluno, id: 'a9', name: 'Bia Patrocinada', sponsored: true };
+
+check('studentCard mostra selo de patrocinado', () => has(studentCard(patrocinado, 'sponsored', { onEdit: noop, onDelete: noop }), 'Patrocinado'));
+check('perfil do patrocinado nao cobra mensalidade', () => has(studentSummaryCard(patrocinado, 'sponsored'), 'sem cobrança'));
+/* O Intl usa espaço fino entre o cifrão e o número, então a busca é pelo valor. */
+check('perfil do pagante segue mostrando o valor', () => has(studentSummaryCard(aluno, 'ok'), '150,00 · vence dia 10'));
+
+check('cadastro tem a opcao de patrocinado', () => {
+  const modal = openStudentModal({ student: null, onSave: async () => {} });
+  const ok = Boolean(modal.element.querySelector('[name="sponsored"]'));
+  modal.close();
+  return ok || 'sem checkbox de patrocinado';
+});
+check('patrocinado esconde os campos de cobranca', () => {
+  const modal = openStudentModal({ student: patrocinado, onSave: async () => {} });
+  const campo = modal.element.querySelector('[name="monthly_fee"]').closest('.field');
+  const ok = campo.classList.contains('hidden');
+  modal.close();
+  return ok || 'mensalidade continua visivel';
+});
+check('desmarcar patrocinado traz os campos de volta', () => {
+  const modal = openStudentModal({ student: patrocinado, onSave: async () => {} });
+  const check1 = modal.element.querySelector('[name="sponsored"]');
+  check1.checked = false;
+  check1.dispatchEvent(new Event('change'));
+  const campo = modal.element.querySelector('[name="monthly_fee"]').closest('.field');
+  const ok = !campo.classList.contains('hidden');
+  modal.close();
+  return ok || 'mensalidade continua escondida';
+});
+check('patrocinado preserva o valor cadastrado', () => {
+  const modal = openStudentModal({ student: patrocinado, onSave: async () => {} });
+  const ok = modal.element.querySelector('[name="monthly_fee"]').value === '150,00';
+  modal.close();
+  return ok || 'valor perdido';
+});
+checkAsync('salvar patrocinado envia sponsored = true', async () => {
+  let recebido = null;
+  const modal = openStudentModal({ student: patrocinado, onSave: async (payload) => { recebido = payload; } });
+  modal.element.querySelector('form').requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  modal.close();
+  if (!recebido) return 'onSave nao foi chamado';
+  if (recebido.sponsored !== true) return `sponsored: ${recebido.sponsored}`;
+  // O histórico de cobrança vai junto, guardado para quando o patrocínio acabar.
+  return recebido.monthly_fee_cents === 15000 || `mensalidade: ${recebido.monthly_fee_cents}`;
+});
+
+/* ---------- Ocupação da turma ---------- */
+check('classCard mostra ocupacao quando ha vagas definidas', () => has(classCard({ ...turma, capacity: 8 }, { onEdit: noop, onDelete: noop }), '4/8 alunos'));
+check('classCard avisa turma cheia', () => has(classCard({ ...turma, capacity: 4 }, { onEdit: noop, onDelete: noop }), 'Turma cheia'));
+check('classCard sem capacidade nao inventa limite', () => !classCard(turma, { onEdit: noop, onDelete: noop }).textContent.includes('/') || 'apareceu barra sem capacidade');
+check('modal de turma tem campo de vagas', () => {
+  const modal = openClassModal({ turma: { ...turma, capacity: 8 }, onSave: async () => {} });
+  const ok = modal.element.querySelector('[name="capacity"]').value === '8';
+  modal.close();
+  return ok || 'valor de vagas errado';
+});
+
+/* ---------- Lista de espera ---------- */
+const fila = [
+  { id: 'w1', name: 'João Silva', phone: '82999998888', class_id: 't1', desired_slot: 'Terça e Quinta — 18h', notes: 'Assim que surgir vaga', status: 'waiting', created_at: '2026-08-10T10:00:00.000Z', classes: { id: 't1', name: 'Adulto Noite' } },
+  { id: 'w2', name: 'Maria Santos', phone: '82988887777', class_id: 't1', desired_slot: 'Terça e Quinta — 18h', notes: null, status: 'contacted', created_at: '2026-08-12T10:00:00.000Z', classes: { id: 't1', name: 'Adulto Noite' } },
+];
+const grupo = groupWaitlistByClass(fila)[0];
+const grupoNode = waitlistGroup(grupo, { onContact: noop, onEnroll: noop, onEdit: noop, onRemove: noop });
+
+check('fila mostra o horario desejado', () => has(grupoNode, 'Adulto Noite'));
+check('fila numera a ordem de chegada', () => has(grupoNode, '1º · João Silva'));
+check('fila mostra a segunda posicao', () => has(grupoNode, '2º · Maria Santos'));
+check('fila mostra a observacao', () => has(grupoNode, 'Assim que surgir vaga'));
+check('fila mostra o status de cada pessoa', () => has(grupoNode, 'Contatada'));
+check('fila linka o WhatsApp', () => grupoNode.querySelector('a[href^="https://wa.me/"]')?.getAttribute('href') === 'https://wa.me/5582999998888' || 'link errado');
+
+const aviso = { id: 'n1', class_id: 't1', student_name: 'Carlos', status: 'new', created_at: '2026-08-17T10:00:00.000Z', classes: { id: 't1', name: 'Adulto Noite' } };
+const avisoNode = vacancyCard({ notification: aviso, people: grupo.people, onResolve: noop, onEnroll: noop });
+
+check('aviso de vaga nomeia a turma', () => has(avisoNode, 'Nova vaga · Adulto Noite'));
+check('aviso diz quem saiu', () => has(avisoNode, 'Carlos saiu da turma'));
+check('aviso mostra a primeira da fila', () => has(avisoNode, 'João Silva'));
+check('aviso mostra o telefone dela', () => has(avisoNode, '(82) 99999-8888'));
+check('aviso comeca como Nova', () => has(avisoNode, 'Nova'));
+check('aviso visualizado muda de selo', () => has(vacancyCard({ notification: { ...aviso, status: 'seen' }, people: grupo.people, onResolve: noop, onEnroll: noop }), 'Visualizada'));
+check('aviso oferece resolver', () => has(avisoNode, 'Marcar como resolvida'));
+check('aviso oferece adicionar a turma', () => has(avisoNode, 'Adicionar à turma'));
+check('aviso sem fila nao promete ninguem', () => has(vacancyCard({ notification: aviso, people: [], onResolve: noop, onEnroll: noop }), 'Ninguém na fila'));
+
+check('modal da lista pede nome e telefone', () => {
+  const modal = openWaitlistModal({ entry: null, classes: [], onSave: async () => {} });
+  const ok = Boolean(modal.element.querySelector('[name="name"]') && modal.element.querySelector('[name="phone"]'));
+  modal.close();
+  return ok || 'faltou campo';
+});
+check('modal da lista preenche o horario a partir da turma', () => {
+  const modal = openWaitlistModal({ entry: null, classes: [turma], onSave: async () => {} });
+  const select = modal.element.querySelector('[name="class_id"]');
+  select.value = 't1';
+  select.dispatchEvent(new Event('change'));
+  const ok = modal.element.querySelector('[name="desired_slot"]').value.includes('Kids Iniciante');
+  modal.close();
+  return ok || `veio "${modal.element.querySelector('[name="desired_slot"]')?.value}"`;
+});
+checkAsync('lista de espera exige contato', async () => {
+  let salvou = false;
+  const modal = openWaitlistModal({ entry: null, classes: [turma], onSave: async () => { salvou = true; } });
+  const form = modal.element.querySelector('form');
+  form.elements.name.value = 'Sem Telefone';
+  form.elements.desired_slot.value = 'Sábado 9h';
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const erro = has(modal.element, 'Informe um telefone');
+  modal.close();
+  return (!salvou && erro === true) || `salvou=${salvou} erro=${erro}`;
+});
+checkAsync('lista de espera salva o que foi digitado', async () => {
+  let recebido = null;
+  const modal = openWaitlistModal({ entry: null, classes: [turma], defaultClassId: 't1', onSave: async (payload) => { recebido = payload; } });
+  const form = modal.element.querySelector('form');
+  form.elements.name.value = 'João Silva';
+  form.elements.phone.value = '(82) 99999-9999';
+  form.elements.notes.value = 'Deseja começar assim que surgir uma vaga.';
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  modal.close();
+  if (!recebido) return 'onSave nao foi chamado';
+  if (recebido.phone !== '82999999999') return `telefone: ${recebido.phone}`;
+  if (recebido.class_id !== 't1') return `turma: ${recebido.class_id}`;
+  return Boolean(recebido.desired_slot) || 'horario desejado vazio';
 });
 
 /* ---------- Resultado ---------- */

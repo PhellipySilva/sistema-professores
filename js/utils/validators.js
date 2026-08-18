@@ -79,3 +79,15 @@ export function validateTitle(title) {
   if (!title || title.trim().length === 0) return 'O título é obrigatório.';
   return null;
 }
+
+/**
+ * Telefone de quem entra na lista de espera.
+ *
+ * Aqui o contato é OBRIGATÓRIO, ao contrário do cadastro de aluno: a lista de
+ * espera existe justamente para o professor conseguir chamar a pessoa quando a
+ * vaga aparecer. Sem telefone, a linha não serve para nada.
+ */
+export function validateContactPhone(phone) {
+  if (!phone || phone.trim() === '') return 'Informe um telefone para contato.';
+  return validatePhone(phone);
+}

@@ -91,3 +91,20 @@ export function capitalize(text) {
   if (!text) return '';
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/**
+ * Link de conversa no WhatsApp a partir do telefone guardado (só dígitos).
+ *
+ * O 55 é acrescentado quando o número tem 10 ou 11 dígitos — DDD + número, o
+ * formato que o cadastro valida. Número já com código de país passa intacto.
+ * Sem telefone, devolve string vazia: quem chama decide se mostra o botão.
+ */
+export function whatsappLink(phone, message = '') {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (digits.length < 10) return '';
+
+  const withCountry = digits.length <= 11 ? `55${digits}` : digits;
+  const query = message ? `?text=${encodeURIComponent(message)}` : '';
+
+  return `https://wa.me/${withCountry}${query}`;
+}

@@ -1,17 +1,60 @@
 /* Estilos de base: tipografia, foco, utilitários de texto e acessibilidade. */
 
+/* ============================================================
+   Fonte — Inter, hospedada aqui dentro
+   ============================================================
+   Os arquivos ficam em assets/fonts e são importados por caminho RELATIVO: é
+   assim que o Vite os reconhece e copia para o build. Nada de <link> para CDN —
+   o sistema não faz requisição a terceiro para desenhar a própria interface, e
+   continua funcionando offline.
+
+   É a fonte variável: um arquivo cobre 400 a 700, então não há uma requisição
+   por peso. O `unicode-range` faz o navegador baixar só o alfabeto que a página
+   usa — em português, apenas o subconjunto latin (48 kB). */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../assets/fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../assets/fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 body {
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   line-height: var(--line-height-base);
   color: var(--color-text);
   background-color: var(--color-background);
+  /* A Inter tem alternativas melhores para alguns caracteres do que o desenho
+     padrão; `cv11` troca o "1" por um com base, que separa 1 de l num sistema
+     cheio de número. */
+  font-feature-settings: 'cv11';
 }
 
 /* O corpo nasce invisível e só aparece depois que a sessão é resolvida.
    Sem isso, quem não está logado vê a tela por um instante antes do redirect. */
 body.app-booting {
   visibility: hidden;
+}
+
+/* Trava a rolagem do fundo enquanto o menu do celular está aberto. */
+body.is-locked {
+  overflow: hidden;
 }
 
 /* ---------- Foco visível (spec, seção 41) ---------- */
@@ -22,17 +65,24 @@ body.app-booting {
   border-radius: var(--radius-sm);
 }
 
-/* ---------- Tipografia ---------- */
+/* ---------- Tipografia ----------
+   Cinco degraus, e cada um tem um trabalho:
+     h1  título da página          28px bold, letra apertada
+     h2  título de bloco           22px semibold
+     h3  título de card            18px semibold
+     .section__title  rótulo       12px semibold caixa alta (ver components.css)
+     .text-sm / .text-muted        apoio */
 
 h1 {
   font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.015em;
+  letter-spacing: var(--letter-spacing-tight);
 }
 
 h2 {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-tight);
 }
 
 h3 {
@@ -46,6 +96,12 @@ strong {
 
 small {
   font-size: var(--font-size-sm);
+}
+
+/* Números em tabela ficam alinhados coluna a coluna, e "R$ 1.180,00" para de
+   dançar quando o valor muda. */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Utilitários ---------- */
@@ -64,6 +120,15 @@ small {
 
 .text-center {
   text-align: center;
+}
+
+/* Corta o texto numa linha só, com reticências. Precisa de min-width: 0 no pai
+   flex, senão o item se recusa a encolher e o layout estoura. */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stack {

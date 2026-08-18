@@ -64,19 +64,23 @@ function renderProfile({ student, classes, payments, attendance, makeups }) {
     attendanceHistorySection(attendance),
     makeupHistorySection(makeups),
     paymentHistorySection(payments, {
-      onRegister: () => openRegisterPayment(student),
+      onRegister: student.sponsored ? null : () => openRegisterPayment(student),
     }),
   ]);
 }
 
 function renderActions(student) {
   render(actions, [
-    el('button', {
-      type: 'button',
-      class: 'btn btn--secondary',
-      html: `${icon('wallet', 18)}<span class="btn__label">Pagamento</span>`,
-      onclick: () => openRegisterPayment(student),
-    }),
+    // Atleta patrocinado não recebe o atalho de pagamento: ele não é cobrado.
+    // O histórico anterior dele continua na página, intacto.
+    student.sponsored
+      ? null
+      : el('button', {
+          type: 'button',
+          class: 'btn btn--secondary',
+          html: `${icon('wallet', 18)}<span class="btn__label">Pagamento</span>`,
+          onclick: () => openRegisterPayment(student),
+        }),
     el('button', {
       type: 'button',
       class: 'btn btn--secondary btn--icon',

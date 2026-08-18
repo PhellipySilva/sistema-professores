@@ -2,15 +2,17 @@
    e transformamos tabela em card no celular (spec, seção 26).
 
    Breakpoints:
-     até 640px   celular  — bottom nav, cards, uma coluna
-     641–1023px  tablet   — bottom nav, duas colunas
-     1024px+     desktop  — sidebar fixa, tabelas de verdade */
+     até 640px   celular  — menu em drawer, uma coluna, tabela vira card
+     641–1023px  tablet   — menu em drawer, duas colunas
+     1024px+     desktop  — sidebar fixa e sempre visível, tabelas de verdade */
 
 /* ============================================================
-   Celular: tabela vira lista de cards
+   Celular
    ============================================================ */
 
 @media (max-width: 640px) {
+  /* ---------- Tabela vira lista de cards ---------- */
+
   .data-table,
   .data-table tbody,
   .data-table tr,
@@ -22,6 +24,7 @@
   .data-table {
     border: none;
     background: transparent;
+    box-shadow: none;
   }
 
   .data-table thead {
@@ -39,6 +42,7 @@
     background-color: var(--color-surface);
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
   }
 
   .data-table tbody tr + tr {
@@ -65,6 +69,38 @@
     text-align: left;
   }
 
+  /* ---------- Respiro proporcional ----------
+     No celular o conteúdo vale mais que a margem: menos padding lateral, cards
+     um pouco mais justos, e a largura toda aproveitada. */
+
+  .page-header {
+    padding: var(--space-5) var(--space-3) var(--space-3);
+  }
+
+  .page-content {
+    padding: 0 var(--space-3) var(--space-6);
+  }
+
+  .card,
+  .stat {
+    padding: var(--space-4);
+  }
+
+  .section {
+    margin-top: var(--space-6);
+  }
+
+  /* O título da página e os botões de ação em linhas separadas, cada um com a
+     largura inteira — em 360px eles não cabem lado a lado sem cortar palavra. */
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-header__actions .btn {
+    flex: 1;
+  }
+
   /* Modal ocupa a tela inteira no celular — mais espaço para o teclado virtual. */
   .modal {
     width: 100%;
@@ -73,10 +109,71 @@
     border-radius: 0;
     display: flex;
     flex-direction: column;
+    animation: modal-in-mobile var(--transition-panel);
+  }
+
+  @keyframes modal-in-mobile {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
   }
 
   .modal__body {
     flex: 1;
+  }
+
+  .modal__footer {
+    border-radius: 0;
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  }
+
+  /* Na chamada, o rótulo do botão de pagamento vira só o ícone. */
+  .btn__label {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Celular de verdade: uma coluna
+   ============================================================
+   Até 480px todo card ocupa a linha inteira. Não é só estética: um card de
+   indicador tem ícone + rótulo + valor, e espremido em duas colunas num
+   aparelho de 360px ele para de caber e empurra a página para o lado. Uma
+   coluna resolve o estouro e ainda deixa cada número maior e mais legível. */
+
+@media (max-width: 480px) {
+  .grid-stats,
+  .grid-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Telas muito estreitas (iPhone SE e afins): o calendário tem sete colunas, e
+   sete é um número que não negocia. Com célula de 40px ele precisa de 304px só
+   de grade e empurra a página para o lado — aqui a célula encolhe até caber.
+   Abaixo de 380px é o único jeito de a semana inteira aparecer sem rolagem. */
+@media (max-width: 380px) {
+  .calendar__weekdays,
+  .calendar__grid {
+    gap: 2px;
+  }
+
+  .calendar__cell {
+    min-height: 32px;
+    font-size: var(--font-size-xs);
+  }
+}
+
+/* Telas muito estreitas: a marca no topo fica só com o logo, para o nome do
+   professor continuar legível ao lado. */
+@media (max-width: 400px) {
+  .topbar__brand-name {
+    display: none;
+  }
+
+  .user-chip__name {
+    max-width: 96px;
   }
 }
 
@@ -85,8 +182,12 @@
    ============================================================ */
 
 @media (min-width: 641px) {
+  .page-header {
+    padding: var(--space-8) var(--space-6) var(--space-4);
+  }
+
   .page-content {
-    padding: var(--space-6);
+    padding: 0 var(--space-6) var(--space-10);
   }
 
   .grid-cards {
@@ -97,6 +198,14 @@
     grid-template-columns: repeat(4, 1fr);
   }
 
+  .shortcut-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .calendar__cell {
+    min-height: 48px;
+  }
+
   .toast-region {
     inset-inline-start: auto;
     inset-inline-end: var(--space-6);
@@ -105,21 +214,39 @@
 }
 
 /* ============================================================
-   Desktop: sidebar entra, bottom nav sai
+   Desktop: a sidebar deixa de ser drawer e passa a fazer parte do layout
    ============================================================ */
 
 @media (min-width: 1024px) {
   .sidebar {
-    display: flex;
+    /* Anula o estado de drawer: aqui ela está sempre aberta, e as classes que o
+       JavaScript põe e tira no celular deixam de ter efeito. */
+    transform: none;
+    visibility: visible;
+    box-shadow: none;
+    transition: none;
   }
 
-  .bottom-nav {
+  /* Sem drawer, não há véu nem botão de fechar nem hambúrguer. */
+  .scrim,
+  .sidebar__close,
+  .topbar__menu,
+  .topbar__brand {
     display: none;
+  }
+
+  /* Se a tela cresceu com o menu aberto, a rolagem volta sozinha. */
+  body.is-locked {
+    overflow: auto;
+  }
+
+  .topbar {
+    inset-inline-start: var(--sidebar-width);
+    padding-inline: var(--space-6);
   }
 
   .app-main {
     margin-inline-start: var(--sidebar-width);
-    padding-bottom: var(--space-10);
   }
 
   .page-header {
@@ -127,15 +254,31 @@
   }
 
   .page-content {
-    padding: var(--space-8);
+    padding-inline: var(--space-8);
   }
 
   .grid-cards {
     grid-template-columns: repeat(3, 1fr);
   }
 
+  .shortcut-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
   .modal__footer .btn {
     flex: 0 0 auto;
+  }
+
+  .attendance-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Telas largas: os cinco indicadores do financeiro cabem numa linha só. */
+@media (min-width: 1280px) {
+  .grid-stats--5 {
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 
@@ -145,7 +288,8 @@
 
 @media print {
   .sidebar,
-  .bottom-nav,
+  .topbar,
+  .scrim,
   .page-header__actions,
   .toast-region {
     display: none !important;
@@ -155,34 +299,9 @@
     margin: 0;
     padding: 0;
   }
-}
 
-/* ---------- Ajustes dos módulos por tamanho de tela ---------- */
-
-@media (max-width: 640px) {
-  /* Na chamada, o rótulo do botão de pagamento vira só o ícone. */
-  .btn__label {
-    display: none;
-  }
-}
-
-@media (min-width: 641px) {
-  .shortcut-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .calendar__cell {
-    min-height: 48px;
-  }
-}
-
-@media (min-width: 1024px) {
-  .shortcut-grid {
-    grid-template-columns: repeat(5, 1fr);
-  }
-
-  .attendance-list {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+  .card,
+  .stat {
+    box-shadow: none;
   }
 }

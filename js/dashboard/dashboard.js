@@ -6,6 +6,7 @@ import { listAllSchedules, listClasses } from '../api/classes.js';
 import { listSessionsBetween } from '../api/sessions.js';
 import { listPaymentsSince, upsertPayment } from '../api/payments.js';
 import { listOpenMakeups } from '../api/makeups.js';
+import { listOpenNotifications } from '../api/waitlist.js';
 import { errorState } from '../components/empty-state.js';
 import { selectField, showFieldErrors } from '../components/form.js';
 import { icon } from '../components/icons.js';
@@ -18,6 +19,7 @@ import {
   endOfMonth,
   formatDateShortBR,
   formatTimeRange,
+  monthLabel,
   startOfMonth,
   todayISO,
 } from '../utils/dates.js';
@@ -25,6 +27,8 @@ import { formatCurrency, pluralize } from '../utils/formatters.js';
 import {
   dueDateForMonth,
   groupPaymentsByStudent,
+  isBillable,
+  monthlySummary,
   recentReferenceMonths,
   studentFinancialStatus,
 } from '../financeiro/financeiro.js';
@@ -42,23 +46,25 @@ async function load() {
   showLoading(content, 'Carregando dashboard...');
 
   try {
-    const [students, classes, schedules, sessions, payments, makeups] = await Promise.all([
-      listStudents(user.id),
-      listClasses(user.id),
-      listAllSchedules(user.id),
-      listSessionsBetween(user.id, startOfMonth(today), endOfMonth(today)),
-      listPaymentsSince(user.id, recentReferenceMonths()[0]),
-      listOpenMakeups(user.id),
-    ]);
+    const [students, classes, schedules, sessions, payments, makeups, vacancies] =
+      await Promise.all([
+        listStudents(user.id),
+        listClasses(user.id),
+        listAllSchedules(user.id),
+        listSessionsBetween(user.id, startOfMonth(today), endOfMonth(today)),
+        listPaymentsSince(user.id, recentReferenceMonths()[0]),
+        listOpenMakeups(user.id),
+        listOpenNotifications(user.id),
+      ]);
 
-    renderDashboard({ students, classes, schedules, sessions, payments, makeups });
+    renderDashboard({ students, classes, schedules, sessions, payments, makeups, vacancies });
   } catch (error) {
     handleError(error, 'Não foi possível carregar o dashboard.');
     render(content, errorState({ message: 'Não foi possível carregar o dashboard.', onRetry: load }));
   }
 }
 
-function renderDashboard({ students, classes, schedules, sessions, payments, makeups }) {
+function renderDashboard({ students, classes, schedules, sessions, payments, makeups, vacancies }) {
   const paymentsByStudent = groupPaymentsByStudent(payments);
 
   const overdue = students.filter(
@@ -70,7 +76,9 @@ function renderDashboard({ students, classes, schedules, sessions, payments, mak
 
   render(content, [
     statsGrid({ students, classes, todayClasses, overdue }),
+    financeSection(monthlySummary(students, payments)),
     shortcuts(students),
+    vacanciesSection(vacancies),
     todaySection(todayClasses),
     overdueSection(overdue, paymentsByStudent),
     upcomingDuesSection(upcomingDues),
@@ -82,20 +90,133 @@ function renderDashboard({ students, classes, schedules, sessions, payments, mak
    Indicadores
    ============================================================ */
 
+/**
+ * Card de indicador: ícone discreto à esquerda, rótulo em cinza e o número em
+ * destaque. O ícone é enfeite funcional — dá ao olho um ponto de ancoragem para
+ * achar o cartão certo sem ler todos os rótulos.
+ *
+ * @param {object} card  { label, value, iconName, hint, variant, money }
+ */
+function statCard(card) {
+  return el('div', { class: `stat${card.variant ? ` stat--${card.variant}` : ''}` }, [
+    el('span', { class: 'stat__icon', html: icon(card.iconName, 18) }),
+    el('div', { class: 'stat__body' }, [
+      el('p', { class: 'stat__label', text: card.label }),
+      el('p', {
+        class: `stat__value${card.money ? ' stat__value--money' : ''}`,
+        text: String(card.value),
+      }),
+      card.hint ? el('p', { class: 'stat__hint', text: card.hint }) : null,
+    ]),
+  ]);
+}
+
 function statsGrid({ students, classes, todayClasses, overdue }) {
   const stats = [
-    { label: 'Alunos', value: students.length },
-    { label: 'Turmas', value: classes.length },
-    { label: 'Aulas hoje', value: todayClasses.length },
-    { label: 'Atrasados', value: overdue.length, danger: overdue.length > 0 },
+    { label: 'Alunos ativos', value: students.length, iconName: 'users' },
+    { label: 'Turmas', value: classes.length, iconName: 'layers' },
+    { label: 'Aulas hoje', value: todayClasses.length, iconName: 'calendar' },
+    {
+      label: 'Atrasados',
+      value: overdue.length,
+      iconName: 'alert',
+      variant: overdue.length > 0 ? 'danger' : null,
+    },
   ];
 
-  return el('div', { class: 'grid-stats' }, stats.map((stat) =>
-    el('div', { class: `stat${stat.danger ? ' stat--danger' : ''}` }, [
-      el('p', { class: 'stat__label', text: stat.label }),
-      el('p', { class: 'stat__value', text: String(stat.value) }),
-    ]),
-  ));
+  return el('div', { class: 'grid-stats' }, stats.map(statCard));
+}
+
+/* ============================================================
+   Financeiro do mês
+   ============================================================ */
+
+/**
+ * Previsto, recebido, a receber e as duas contagens de alunos.
+ *
+ * Tudo vem de `monthlySummary`, que lê os dados reais — cadastro dos alunos e
+ * pagamentos registrados. Não existe número digitado nesta tela: alterar uma
+ * mensalidade, dar baixa num pagamento ou marcar alguém como patrocinado muda
+ * estes cartões no próximo carregamento, sem nenhum passo extra.
+ */
+function financeSection(summary) {
+  const cards = [
+    {
+      label: 'Valor previsto',
+      value: formatCurrency(summary.expectedCents),
+      hint: 'Soma das mensalidades de quem é cobrado',
+      iconName: 'wallet',
+      // O azul da marca fica no número que resume o mês — e em nenhum outro
+      // valor desta grade, senão deixa de destacar coisa alguma.
+      variant: 'accent',
+      money: true,
+    },
+    {
+      label: 'Valor recebido',
+      value: formatCurrency(summary.receivedCents),
+      hint: 'Pagamentos com baixa registrada neste mês',
+      iconName: 'trendUp',
+      variant: 'success',
+      money: true,
+    },
+    {
+      label: 'Valor a receber',
+      value: formatCurrency(summary.toReceiveCents),
+      hint: 'Previsto menos recebido',
+      iconName: 'clock',
+      variant: summary.toReceiveCents > 0 ? 'warning' : null,
+      money: true,
+    },
+    { label: 'Alunos pagantes', value: String(summary.payingCount), iconName: 'user' },
+    {
+      label: 'Patrocinados',
+      value: String(summary.sponsoredCount),
+      hint: 'Atletas sem mensalidade',
+      iconName: 'award',
+      variant: 'sponsored',
+    },
+  ];
+
+  return el('section', { class: 'section' }, [
+    el('h2', { class: 'section__title', text: `Financeiro de ${monthLabel(summary.month)}` }),
+    el('div', { class: 'grid-stats grid-stats--5' }, cards.map(statCard)),
+  ]);
+}
+
+/* ============================================================
+   Vagas com gente esperando
+   ============================================================ */
+
+/** Resumo dos avisos em aberto. O detalhe (e as ações) fica na lista de espera. */
+function vacanciesSection(vacancies) {
+  if (!vacancies || vacancies.length === 0) return null;
+
+  return el('section', { class: 'section' }, [
+    el('h2', { class: 'section__title', text: `Vagas disponíveis · ${vacancies.length}` }),
+    el('div', { class: 'card card--flush' }, vacancies.map((notification) =>
+      el('a', {
+        class: 'list-item',
+        href: `/pages/lista-espera.html?class=${notification.class_id}`,
+      }, [
+        el('div', {}, [
+          el('p', {
+            class: 'list-item__title',
+            text: notification.classes?.name ?? 'Turma',
+          }),
+          el('p', {
+            class: 'list-item__meta',
+            text: notification.student_name
+              ? `${notification.student_name} saiu — há gente na lista de espera`
+              : 'Há gente na lista de espera para este horário',
+          }),
+        ]),
+        el('span', {
+          class: `badge badge--${notification.status === 'new' ? 'danger' : 'warning'}`,
+          text: notification.status === 'new' ? 'Nova' : 'Visualizada',
+        }),
+      ]),
+    )),
+  ]);
 }
 
 /* ============================================================
@@ -108,6 +229,7 @@ function shortcuts(students) {
     { label: 'Adicionar turma', iconName: 'plus', href: '/pages/turmas.html' },
     { label: 'Abrir agenda', iconName: 'calendar', href: '/pages/agenda.html' },
     { label: 'Planejar aula', iconName: 'clipboard', href: '/pages/planejamentos.html' },
+    { label: 'Lista de espera', iconName: 'bell', href: '/pages/lista-espera.html' },
   ];
 
   const buttons = items.map((item) =>
@@ -137,7 +259,8 @@ function shortcuts(students) {
 
 /** Escolhe o aluno e emenda direto no formulário de pagamento. */
 function openPaymentPicker(students) {
-  const withFee = students.filter((student) => student.monthly_fee_cents);
+  // Patrocinado não entra: ele não tem mensalidade a receber baixa.
+  const withFee = students.filter(isBillable);
 
   if (withFee.length === 0) {
     toast.info('Nenhum aluno tem mensalidade configurada ainda.');
@@ -257,7 +380,7 @@ function computeUpcomingDues(students, paymentsByStudent) {
   const currentMonth = startOfMonth(today);
 
   return students
-    .filter((student) => student.monthly_fee_cents && student.due_day)
+    .filter(isBillable)
     .map((student) => ({ student, dueDate: dueDateForMonth(currentMonth, student.due_day) }))
     .filter(({ student, dueDate }) => {
       if (dueDate < today || dueDate > limit) return false;

@@ -4,11 +4,12 @@ import { el } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
 import { checkboxChips, selectField, showFieldErrors, textField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
-import { CATEGORIES, formatCategory, pluralize } from '../utils/formatters.js';
+import { CATEGORIES, formatCategory } from '../utils/formatters.js';
 import { addMinutesToTime, formatTime, formatWeekdayList, minutesBetween, weekdayShort } from '../utils/dates.js';
 import { validateCategory, validateName } from '../utils/validators.js';
 import { buildStudentPicker } from './aluno-picker.js';
 import { expandEnrollmentDays, normalizeEnrollmentDays } from './matriculas.js';
+import { formatOccupancy, isFull } from '../lista-espera/vagas.js';
 
 const WEEKDAY_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
   value: day,
@@ -39,10 +40,12 @@ export function classCard(turma, { onEdit, onDelete }) {
       ]),
       el('span', { class: 'badge badge--neutral', text: formatCategory(turma.category) }),
     ]),
-    el('p', {
-      class: 'card__meta',
-      text: pluralize('aluno matriculado', 'alunos matriculados', turma.student_count),
-    }),
+    el('div', { class: 'row' }, [
+      el('p', { class: 'card__meta', text: formatOccupancy(turma.student_count, turma.capacity) }),
+      isFull(turma.capacity, turma.student_count)
+        ? el('span', { class: 'badge badge--warning', text: 'Turma cheia' })
+        : null,
+    ]),
     el('div', { class: 'card__footer' }, [
       el('button', {
         type: 'button',
@@ -128,6 +131,17 @@ export function openClassModal({ turma, students, enrollments = [], onSave, onCl
       max: 300,
       required: true,
     }),
+    textField({
+      name: 'capacity',
+      label: 'Vagas',
+      type: 'number',
+      value: turma?.capacity ?? '',
+      placeholder: '8',
+      inputmode: 'numeric',
+      min: 1,
+      max: 100,
+      hint: 'Opcional. Com as vagas definidas, a turma mostra "7/8" e a saída de um aluno vira aviso para a lista de espera.',
+    }),
   ];
 
   let picker = null;
@@ -160,6 +174,8 @@ export function openClassModal({ turma, students, enrollments = [], onSave, onCl
       const category = form.elements.category.value;
       const startTime = form.elements.start_time.value;
       const duration = Number(form.elements.duration.value);
+      const capacityRaw = (form.elements.capacity.value ?? '').trim();
+      const capacity = capacityRaw ? Number(capacityRaw) : null;
       const days = readCheckedDays(form);
 
       const errors = {
@@ -171,6 +187,10 @@ export function openClassModal({ turma, students, enrollments = [], onSave, onCl
           Number.isInteger(duration) && duration >= 15 && duration <= 300
             ? null
             : 'A duração deve ser entre 15 e 300 minutos.',
+        capacity:
+          capacity === null || (Number.isInteger(capacity) && capacity >= 1 && capacity <= 100)
+            ? null
+            : 'As vagas devem ser um número entre 1 e 100.',
       };
 
       if (showFieldErrors(form, errors)) throw new Error('validação');
@@ -178,6 +198,7 @@ export function openClassModal({ turma, students, enrollments = [], onSave, onCl
       await onSave({
         name,
         category,
+        capacity,
         schedules: days.map((day) => ({
           day_of_week: day,
           start_time: `${startTime}:00`,

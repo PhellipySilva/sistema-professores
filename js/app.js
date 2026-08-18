@@ -11,7 +11,8 @@
  */
 
 import { requireAuth, signOut, watchSession } from './auth.js';
-import { renderLayout } from './components/layout.js';
+import { getProfile } from './api/profiles.js';
+import { displayName, renderLayout, setUserName } from './components/layout.js';
 
 /**
  * Prepara a página e devolve o contexto para o controller.
@@ -26,8 +27,23 @@ export async function initPage(pageId) {
   watchSession();
   renderLayout({ pageId, user: session.user, onLogout: signOut });
   revealPage();
+  loadUserName(session.user);
 
   return { session, user: session.user };
+}
+
+/**
+ * Busca o nome do professor em `profiles` e corrige o cabeçalho quando chega.
+ *
+ * SEM `await` de propósito: o shell já foi montado com o nome de reserva (a
+ * parte do e-mail antes do @), e uma consulta a mais não pode atrasar a tela que
+ * o professor veio ver. Se falhar, o nome de reserva fica — e falhar aqui não
+ * gera erro visível, porque nada do trabalho dele depende disto.
+ */
+function loadUserName(user) {
+  getProfile(user.id).then((profile) => {
+    if (profile) setUserName(displayName(user, profile));
+  });
 }
 
 /** Tira a classe que mantém o <body> invisível durante o boot. */

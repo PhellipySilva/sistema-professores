@@ -9,11 +9,15 @@ import {
   normalizeEnrollmentDays, reconcileDays, studentsForDay,
 } from '../js/turmas/matriculas.js';
 import {
-  billingStartDate, buildInitialPayment, dueDateForMonth, enrollmentMonth, isValidDueDay,
-  paymentStatus, recentReferenceMonths, selectableReferenceMonths, studentFinancialStatus,
+  billingStartDate, buildInitialPayment, dueDateForMonth, enrollmentMonth, isBillable,
+  isValidDueDay, monthlySummary, paymentStatus, recentReferenceMonths,
+  selectableReferenceMonths, studentFinancialStatus,
 } from '../js/financeiro/financeiro.js';
+import {
+  formatOccupancy, freeSlots, groupWaitlistByClass, hasVacancy, isFull,
+} from '../js/lista-espera/vagas.js';
 import { timestampToLocalISODate } from '../js/utils/dates.js';
-import { parseCurrencyToCents, formatCurrency, formatPhone } from '../js/utils/formatters.js';
+import { parseCurrencyToCents, formatCurrency, formatPhone, whatsappLink } from '../js/utils/formatters.js';
 import { validateDueDay } from '../js/utils/validators.js';
 
 const results = [];
@@ -227,6 +231,87 @@ eq('parse vazio', parseCurrencyToCents(''), null);
 eq('format 15000', formatCurrency(15000).replace(/ /g, ' '), 'R$ 150,00');
 eq('telefone 11 digitos', formatPhone('82999998888'), '(82) 99999-8888');
 eq('telefone 10 digitos', formatPhone('8232228888'), '(82) 3222-8888');
+
+/* ---------- ATLETA PATROCINADO ---------- */
+/* O patrocinado sai antes de qualquer conta: nem em dia, nem atrasado. */
+const patrocinado = { sponsored: true, monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-10T12:00:00.000Z' };
+const pagante = { sponsored: false, monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-10T12:00:00.000Z' };
+
+eq('patrocinado tem status proprio', studentFinancialStatus(patrocinado, [], '2026-08-17'), 'sponsored');
+eq('patrocinado nunca fica atrasado, nem meses depois', studentFinancialStatus(patrocinado, [], '2026-12-31'), 'sponsored');
+eq('mesmo aluno sem patrocinio fica atrasado', studentFinancialStatus(pagante, [], '2026-08-17'), 'overdue');
+eq('patrocinado nao e cobravel', isBillable(patrocinado), false);
+eq('pagante com mensalidade e vencimento e cobravel', isBillable(pagante), true);
+eq('sem dia de vencimento nao e cobravel', isBillable({ monthly_fee_cents: 15000 }), false);
+
+/* ---------- RESUMO FINANCEIRO DO MES ---------- */
+const elenco = [
+  { id: 'A', sponsored: false, monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-01T12:00:00.000Z' },
+  { id: 'B', sponsored: false, monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-01T12:00:00.000Z' },
+  { id: 'C', sponsored: false, monthly_fee_cents: 13000, due_day: 10, created_at: '2026-01-01T12:00:00.000Z' },
+  { id: 'D', sponsored: false, monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-01T12:00:00.000Z' },
+  { id: 'E', sponsored: true, monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-01T12:00:00.000Z' },
+];
+const lancamentos = [
+  { student_id: 'A', amount_cents: 15000, reference_month: '2026-08-01', paid_date: '2026-08-09' },
+  { student_id: 'B', amount_cents: 15000, reference_month: '2026-08-01', paid_date: '2026-08-10' },
+  { student_id: 'C', amount_cents: 13000, reference_month: '2026-08-01', paid_date: null },
+  { student_id: 'D', amount_cents: 15000, reference_month: '2026-07-01', paid_date: '2026-07-10' },
+];
+const resumoMes = monthlySummary(elenco, lancamentos, '2026-08-17');
+
+eq('previsto soma so quem paga (150+150+130+150)', resumoMes.expectedCents, 58000);
+eq('recebido conta so a baixa do mes', resumoMes.receivedCents, 30000);
+eq('a receber = previsto - recebido', resumoMes.toReceiveCents, 28000);
+eq('alunos pagantes', resumoMes.payingCount, 4);
+eq('patrocinados contados a parte', resumoMes.sponsoredCount, 1);
+eq('total de alunos', resumoMes.studentCount, 5);
+
+/* Mensalidade cadastrada NAO vira recebimento sozinha. */
+eq('sem baixa, nada recebido', monthlySummary(elenco, [], '2026-08-17').receivedCents, 0);
+eq('sem baixa, tudo a receber', monthlySummary(elenco, [], '2026-08-17').toReceiveCents, 58000);
+
+/* Recebido maior que previsto (quitou mes atrasado junto) nao vira negativo. */
+const extra = [{ student_id: 'A', amount_cents: 99000, reference_month: '2026-08-01', paid_date: '2026-08-09' }];
+eq('a receber nunca fica negativo', monthlySummary(elenco, extra, '2026-08-17').toReceiveCents, 0);
+
+/* Turma inteira de patrocinados: previsto zero, e ninguem some da contagem. */
+const sopatrocinados = [{ id: 'X', sponsored: true, monthly_fee_cents: 15000, due_day: 5, created_at: '2026-01-01T12:00:00.000Z' }];
+eq('so patrocinados: previsto zero', monthlySummary(sopatrocinados, [], '2026-08-17').expectedCents, 0);
+eq('so patrocinados: continuam contados', monthlySummary(sopatrocinados, [], '2026-08-17').studentCount, 1);
+
+/* ---------- VAGA NA TURMA ---------- */
+eq('sem capacidade definida, sempre ha vaga', hasVacancy(null, 12), true);
+eq('7 de 8 tem vaga', hasVacancy(8, 7), true);
+eq('8 de 8 nao tem vaga', hasVacancy(8, 8), false);
+eq('turma cheia', isFull(8, 8), true);
+eq('vagas livres', freeSlots(8, 6), 2);
+eq('vagas livres nunca negativas', freeSlots(8, 10), 0);
+eq('vagas livres sem capacidade', freeSlots(null, 10), null);
+eq('ocupacao com capacidade', formatOccupancy(7, 8), '7/8 alunos');
+eq('ocupacao sem capacidade', formatOccupancy(4, null), '4 alunos matriculados');
+eq('ocupacao singular', formatOccupancy(1, null), '1 aluno matriculado');
+
+/* ---------- ORDEM DA LISTA DE ESPERA ---------- */
+const fila = [
+  { id: 'w1', name: 'João', class_id: 'T1', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-10T10:00:00.000Z', classes: { name: 'Adulto Noite' } },
+  { id: 'w2', name: 'Maria', class_id: 'T1', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-12T10:00:00.000Z', classes: { name: 'Adulto Noite' } },
+  { id: 'w3', name: 'Pedro', class_id: 'T1', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-15T10:00:00.000Z', classes: { name: 'Adulto Noite' } },
+  { id: 'w4', name: 'Ana', class_id: null, desired_slot: 'Sabado de manha', created_at: '2026-08-11T10:00:00.000Z', classes: null },
+];
+const grupos = groupWaitlistByClass(fila);
+eq('fila agrupada por turma desejada', grupos.length, 2);
+eq('grupo da turma usa o nome dela', grupos[0].label, 'Adulto Noite');
+eq('grupo sem turma usa o horario escrito', grupos[1].label, 'Sabado de manha');
+eq('ordem de chegada preservada', grupos[0].people.map((p) => p.name), ['João', 'Maria', 'Pedro']);
+eq('posicoes numeradas a partir de 1', grupos[0].people.map((p) => p.position), [1, 2, 3]);
+eq('primeiro da fila e a primeira opcao', grupos[0].people[0].name, 'João');
+
+/* ---------- CONTATO ---------- */
+eq('whatsapp com DDD ganha o 55', whatsappLink('82999998888'), 'https://wa.me/5582999998888');
+eq('whatsapp com fixo de 10 digitos', whatsappLink('8232228888'), 'https://wa.me/558232228888');
+eq('whatsapp sem telefone', whatsappLink(''), '');
+eq('whatsapp com mensagem', whatsappLink('82999998888', 'Oi!'), 'https://wa.me/5582999998888?text=Oi!');
 
 const failed = results.filter((r) => !r.ok);
 document.title = `${results.length - failed.length}/${results.length} OK`;

@@ -85,6 +85,7 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 3 | `0003_triggers.sql` | `updated_at` automático e criação do perfil |
 | 4 | `0004_due_day_31.sql` | Permite dia de vencimento de 1 a 31 |
 | 5 | `0005_enrollment_days.sql` | Aluno matriculado em dias específicos da turma |
+| 6 | `0006_patrocinados_lista_espera.sql` | Atleta patrocinado, vagas da turma, lista de espera e avisos |
 
 Para conferir que deu certo, rode:
 
@@ -95,14 +96,14 @@ where schemaname = 'public'
 order by tablename;
 ```
 
-Devem aparecer **10 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
+Devem aparecer **12 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
 foi aplicado e os dados estariam expostos — não siga adiante.
 
 > **Rode cada arquivo uma única vez.** O SQL Editor executa tudo numa transação: se um comando
 > falhar (por exemplo `relation "profiles" already exists`, sinal de que o script foi colado duas
 > vezes), a transação inteira é desfeita e o banco volta ao que era antes.
 >
-> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 10 tabelas e as funções, é
+> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 12 tabelas e as funções, é
 > seguro em qualquer estado, e depois dele os três arquivos rodam limpos. **É destrutivo:** apaga
 > os dados junto (não mexe nos usuários).
 
@@ -154,8 +155,10 @@ imprimem o resultado. Não entram no build de produção.
 
 | Página | O que cobre |
 |---|---|
-| `/tests/` | Datas e fusos, ocorrências de aula, matrícula por dia, status financeiro, dinheiro (108 casos) |
-| `/tests/render.html` | Todos os componentes de interface montados com dados falsos (70 casos) |
+| `/tests/` | Datas e fusos, ocorrências de aula, matrícula por dia, status financeiro, vagas, dinheiro (145 casos) |
+| `/tests/render.html` | Todos os componentes de interface montados com dados falsos (100 casos) |
+| `/tests/preview.html` | Vitrine visual: sidebar, topbar, perfil, cards, campos, calendário e chamada, sem banco nem sessão |
+| `/tests/preview-mobile.html` | A vitrine dentro de iframes de 390 e 320 px, medindo se sobra scroll horizontal |
 
 Rode antes de mexer em `utils/dates.js`, `agenda/ocorrencias.js`,
 `turmas/matriculas.js` ou `financeiro/financeiro.js` — são as quatro peças onde
@@ -191,13 +194,14 @@ um erro passa despercebido e corrompe dado de verdade.
 │   ├── dashboard.html
 │   ├── alunos.html · aluno.html
 │   ├── turmas.html · turma.html
+│   ├── lista-espera.html
 │   ├── agenda.html · aula.html
 │   └── planejamentos.html
 │
 ├── css/
 │   ├── variables.css        design tokens — nenhum valor solto fora daqui
 │   ├── reset.css · base.css
-│   ├── layout.css           sidebar, bottom nav, header, conteúdo
+│   ├── layout.css           sidebar/drawer, topbar, perfil, conteúdo
 │   ├── components.css       botões, cards, modal, toast, badges, formulários
 │   └── responsive.css       breakpoints e a virada tabela → card
 │
@@ -208,12 +212,45 @@ um erro passa despercebido e corrompe dado de verdade.
 │   ├── api/                 TODA query Supabase mora aqui (Fase 2+)
 │   ├── components/          layout, modal, toast, confirm, empty-state, loading, icons
 │   ├── dashboard/ alunos/ turmas/ agenda/ financeiro/ reposicoes/ planejamentos/
+│   ├── lista-espera/          fila por turma, regra da vaga e avisos
 │   └── utils/               dates, formatters, validators, dom
 │
+├── tests/                   suítes e vitrine visual — fora do build
 ├── supabase/migrations/     SQL versionado
 ├── docs/ARQUITETURA.md      decisões de arquitetura e o porquê de cada uma
 └── assets/
+    ├── icons/               favicon
+    └── fonts/               Inter (variável, subconjunto latino)
 ```
+
+## Identidade visual
+
+Azul `#0736C2` + preto + branco + neutros frios. O azul é **cor de destaque**,
+não cor de fundo: ele aparece na ação principal, no item de menu selecionado, no
+campo em foco e no número que resume o mês. O resto da tela é branco sobre cinza
+claríssimo, e o contraste vem do preto.
+
+| Peça | Onde mexer |
+|---|---|
+| Paleta, tipografia, raios, sombras, espaçamento | `css/variables.css` — **nenhum valor de cor fora daqui** |
+| Fonte | `css/base.css` (`@font-face`) + `assets/fonts/` |
+| Sidebar escura, drawer, topbar, perfil | `css/layout.css` + `js/components/layout.js` |
+| Cards, botões, campos, badges, modal | `css/components.css` |
+| Comportamento por tamanho de tela | `css/responsive.css` |
+
+Trocar a cor da marca é editar **uma linha** (`--color-primary`) e as duas
+variações dela logo abaixo. Tudo o mais — botão, foco, item de menu, ícone de
+atalho, ponto do calendário — deriva daí.
+
+**Navegação:** no desktop a sidebar fica fixa à vista; no celular o MESMO
+elemento vira um drawer, aberto pelo botão ☰ do topo. Não existe uma segunda
+navegação para telas pequenas: é o mesmo HTML com outro CSS.
+
+**Fonte:** Inter, hospedada em `assets/fonts/` e importada por caminho relativo
+em `css/base.css`. Nada de `<link>` para CDN — o sistema não pede a terceiro o
+desenho da própria interface, e continua legível offline. É a versão variável
+(um arquivo cobre 400–700) com `unicode-range`, então o navegador baixa 48 kB
+para uma tela em português. A pilha do sistema fica como reserva.
 
 ### As cinco camadas
 
@@ -247,12 +284,20 @@ A regra que mantém isso honesto, verificável com um `grep`:
 - [x] **Fase 9** — Planejamentos: CRUD agrupado por mês
 - [x] **Fase 10** — Dashboard: indicadores reais, aulas do dia, atrasados, vencimentos, atalhos
 - [x] **Fase 11** — Refinamento: mobile, acessibilidade, estados de carga/erro/vazio, testes
+- [x] **Fase 12** — Financeiro do mês (previsto / recebido / a receber), atleta patrocinado,
+  lista de espera por turma e aviso de vaga
+- [x] **Fase 13** — Nova identidade visual: azul `#0736C2`, sidebar escura, drawer no celular,
+  perfil no topo com o nome do professor e tipografia Inter
 
 ### Fora deste MVP
 
-WhatsApp, biblioteca de exercícios, avaliações, evolução, notificações, busca global, relatórios
-avançados, gráficos, integração de pagamentos (Pix/boleto/cartão), cobrança automática, painel
-administrativo, assinaturas e funcionalidades de IA.
+Biblioteca de exercícios, avaliações, evolução, busca global, relatórios avançados, gráficos,
+integração de pagamentos (Pix/boleto/cartão), cobrança automática, painel administrativo,
+assinaturas e funcionalidades de IA.
+
+O contato por WhatsApp existe como link `wa.me` na lista de espera — abrir a conversa, nada mais.
+Não há envio automático de mensagem nem integração com a API do WhatsApp. As notificações são as
+de vaga na lista de espera, gravadas no banco; não há push nem e-mail.
 
 A arquitetura já deixa espaço para todas: `user_id` + RLS em todas as tabelas desde o início,
 histórico de matrícula em `class_students.active`, e a camada `js/api/` isolando o backend.

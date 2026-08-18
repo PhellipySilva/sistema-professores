@@ -10,7 +10,8 @@
 
 import { supabase } from '../supabase.js';
 
-const COLUMNS = 'id, name, phone, category, guardian_name, monthly_fee_cents, due_day, created_at';
+const COLUMNS =
+  'id, name, phone, category, guardian_name, monthly_fee_cents, due_day, sponsored, created_at';
 
 export async function listStudents(userId) {
   const { data, error } = await supabase
@@ -36,7 +37,8 @@ export async function getStudent(userId, studentId) {
 }
 
 /**
- * @param {object} input  { name, phone, category, guardian_name, monthly_fee_cents, due_day }
+ * @param {object} input  { name, phone, category, guardian_name, monthly_fee_cents, due_day,
+ *                          sponsored }
  */
 export async function createStudent(userId, input) {
   const { data, error } = await supabase
