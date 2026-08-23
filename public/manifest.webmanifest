@@ -1,0 +1,26 @@
+{
+  "name": "MatchPhoint — Gestão de aulas",
+  "short_name": "MatchPhoint",
+  "description": "Gestão de aulas de Beach Tennis: alunos, turmas, agenda, frequência e financeiro.",
+  "lang": "pt-BR",
+  "start_url": "/pages/dashboard.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f5f7fa",
+  "theme_color": "#0736c2",
+  "icons": [
+    {
+      "src": "/icons/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

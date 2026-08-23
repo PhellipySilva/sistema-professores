@@ -1,20 +1,23 @@
 /* Acesso a dados: pagamentos de mensalidade. */
 
 import { supabase } from '../supabase.js';
+import { cachedRead, cacheKey } from '../offline/cache.js';
 
 const COLUMNS = 'id, student_id, amount_cents, reference_month, due_date, paid_date, created_at';
 
 /** Histórico completo de um aluno, mais recente primeiro (perfil do aluno). */
 export async function listPaymentsForStudent(userId, studentId) {
-  const { data, error } = await supabase
-    .from('payments')
-    .select(COLUMNS)
-    .eq('user_id', userId)
-    .eq('student_id', studentId)
-    .order('reference_month', { ascending: false });
+  return cachedRead(cacheKey(userId, 'payments', 'student', studentId), async () => {
+    const { data, error } = await supabase
+      .from('payments')
+      .select(COLUMNS)
+      .eq('user_id', userId)
+      .eq('student_id', studentId)
+      .order('reference_month', { ascending: false });
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 /**
@@ -25,16 +28,18 @@ export async function listPaymentsForStudent(userId, studentId) {
  * @param {string} sinceMonthIso  'YYYY-MM-01'
  */
 export async function listPaymentsSince(userId, sinceMonthIso) {
-  const { data, error } = await supabase
-    .from('payments')
-    // amount_cents entra aqui porque a dashboard soma o RECEBIDO do mês a partir
-    // do que foi efetivamente lançado, e não da mensalidade cadastrada.
-    .select('student_id, amount_cents, reference_month, due_date, paid_date')
-    .eq('user_id', userId)
-    .gte('reference_month', sinceMonthIso);
+  return cachedRead(cacheKey(userId, 'payments', 'since', sinceMonthIso), async () => {
+    const { data, error } = await supabase
+      .from('payments')
+      // amount_cents entra aqui porque a dashboard soma o RECEBIDO do mês a partir
+      // do que foi efetivamente lançado, e não da mensalidade cadastrada.
+      .select('student_id, amount_cents, reference_month, due_date, paid_date')
+      .eq('user_id', userId)
+      .gte('reference_month', sinceMonthIso);
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 /**

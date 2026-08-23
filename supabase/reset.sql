@@ -13,6 +13,7 @@
 --
 -- Depois deste arquivo, rode em ordem:
 --   0001_schema.sql → 0002_rls.sql → 0003_triggers.sql → 0004 → 0005 → 0006
+--   → 0007 → 0008
 -- =============================================================================
 
 -- O trigger vive em auth.users, então some antes das tabelas.
@@ -21,6 +22,7 @@ drop trigger if exists on_auth_user_created on auth.users;
 -- Ordem inversa das dependências. `cascade` leva junto políticas de RLS,
 -- índices, constraints e triggers de cada tabela.
 drop table if exists public.waitlist_notifications cascade;
+drop table if exists public.waitlist_entry_classes  cascade;
 drop table if exists public.waitlist_entries       cascade;
 drop table if exists public.attendance      cascade;
 drop table if exists public.makeups         cascade;

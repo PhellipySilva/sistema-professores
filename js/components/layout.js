@@ -12,6 +12,11 @@
 
 import { el } from '../utils/dom.js';
 import { icon } from './icons.js';
+import { connectionIndicator } from './connection.js';
+// Importar o arquivo (em vez de escrever o caminho numa string) faz o Vite
+// versionar e copiar a imagem no build — é o mesmo motivo de a fonte entrar por
+// url() relativa no CSS.
+import logoMatchPhoint from '../../assets/brand/matchphoint.png';
 
 /** Navegação principal (spec, seção 24). Cinco itens — nem um a mais. */
 export const NAV_ITEMS = [
@@ -32,7 +37,21 @@ const SECTION_OF = {
   'lista-espera': 'turmas',
 };
 
-const BRAND = { initials: 'BT', name: 'Beach Tennis', tagline: 'Gestão de aulas' };
+export const BRAND = { name: 'MatchPhoint', tagline: 'Gestão de aulas' };
+
+/* A logo. Quem define o tamanho é o contêiner (`.brand-plate--md`, por
+   exemplo); a imagem só ocupa a largura que recebe. `width`/`height` são os do
+   arquivo e existem para o navegador reservar o espaço antes de baixá-la. */
+function brandLogo() {
+  return el('img', {
+    class: 'brand-lockup',
+    src: logoMatchPhoint,
+    alt: BRAND.name,
+    width: 440,
+    height: 214,
+    decoding: 'async',
+  });
+}
 
 /* Referências vivas do shell montado, para o nome do professor poder ser
    atualizado depois que o perfil chega do banco (ver setUserName). */
@@ -202,11 +221,11 @@ function buildSidebar(activeSection, onClose, onLogout) {
 
   return el('aside', { class: 'sidebar', id: 'app-sidebar' }, [
     el('div', { class: 'sidebar__brand' }, [
-      el('div', { class: 'brand-logo brand-logo--lg', text: BRAND.initials }),
-      el('div', { class: 'truncate' }, [
-        el('p', { class: 'sidebar__brand-name', text: BRAND.name }),
-        el('p', { class: 'sidebar__brand-tagline', text: BRAND.tagline }),
-      ]),
+      el('a', {
+        class: 'brand-plate brand-plate--md',
+        href: '/pages/dashboard.html',
+        'aria-label': `${BRAND.name} — ir para o dashboard`,
+      }, [brandLogo()]),
       el('button', {
         type: 'button',
         class: 'sidebar__close',
@@ -241,11 +260,15 @@ function buildTopbar(onOpenMenu, userMenu) {
       html: icon('menu', 22),
       onclick: onOpenMenu,
     }),
-    el('a', { class: 'topbar__brand', href: '/pages/dashboard.html' }, [
-      el('span', { class: 'brand-logo', text: BRAND.initials }),
-      el('span', { class: 'topbar__brand-name', text: BRAND.name }),
-    ]),
+    el('a', {
+      class: 'topbar__brand',
+      href: '/pages/dashboard.html',
+      'aria-label': `${BRAND.name} — ir para o dashboard`,
+    }, [brandLogo()]),
     el('div', { class: 'topbar__spacer' }),
+    // O estado da conexão fica ao lado do perfil: é o canto onde o olho já vai
+    // procurar informação sobre a sessão, e não disputa espaço com o conteúdo.
+    connectionIndicator(),
     userMenu,
   ]);
 }

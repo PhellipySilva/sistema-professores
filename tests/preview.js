@@ -12,6 +12,9 @@ import { icon } from '../js/components/icons.js';
 import { el, render } from '../js/utils/dom.js';
 import { checkboxField, selectField, textField } from '../js/components/form.js';
 import { openFormModal } from '../js/components/modal.js';
+import { classCard, weekdayFilterBar } from '../js/turmas/turmas-ui.js';
+import { studentCard, studentSummaryCard } from '../js/alunos/alunos-ui.js';
+import { interestBadges } from '../js/lista-espera/lista-espera-ui.js';
 
 renderLayout({
   pageId: 'dashboard',
@@ -29,8 +32,11 @@ document.getElementById('page-actions').append(
   }),
 );
 
-const statCard = (card) =>
-  el('div', { class: `stat${card.variant ? ` stat--${card.variant}` : ''}` }, [
+const statCard = (card) => {
+  const classes = ['stat'];
+  if (card.variant) classes.push(`stat--${card.variant}`);
+  if (card.variant && card.highlight) classes.push('stat--highlight');
+  return el('div', { class: classes.join(' ') }, [
     el('span', { class: 'stat__icon', html: icon(card.iconName, 18) }),
     el('div', { class: 'stat__body' }, [
       el('p', { class: 'stat__label', text: card.label }),
@@ -41,37 +47,38 @@ const statCard = (card) =>
       card.hint ? el('p', { class: 'stat__hint', text: card.hint }) : null,
     ]),
   ]);
+};
 
 render(document.getElementById('page-content'), [
   el('div', { class: 'grid-stats' }, [
-    { label: 'Alunos ativos', value: '24', iconName: 'users' },
-    { label: 'Turmas', value: '6', iconName: 'layers' },
-    { label: 'Aulas hoje', value: '3', iconName: 'calendar' },
-    { label: 'Atrasados', value: '2', iconName: 'alert', variant: 'danger' },
+    { label: 'Alunos ativos', value: '24', iconName: 'users', variant: 'accent', highlight: true },
+    { label: 'Turmas', value: '6', iconName: 'layers', variant: 'success', highlight: true },
+    { label: 'Aulas hoje', value: '3', iconName: 'calendar', variant: 'sponsored', highlight: true },
+    { label: 'Atrasados', value: '2', iconName: 'alert', variant: 'danger', highlight: true },
   ].map(statCard)),
 
   el('section', { class: 'section' }, [
     el('h2', { class: 'section__title', text: 'Financeiro de agosto/2026' }),
     el('div', { class: 'grid-stats grid-stats--5' }, [
-      { label: 'Valor previsto', value: 'R$ 3.480,00', hint: 'Soma das mensalidades de quem é cobrado', iconName: 'wallet', variant: 'accent', money: true },
-      { label: 'Valor recebido', value: 'R$ 2.150,00', hint: 'Pagamentos com baixa registrada neste mês', iconName: 'trendUp', variant: 'success', money: true },
-      { label: 'Valor a receber', value: 'R$ 1.330,00', hint: 'Previsto menos recebido', iconName: 'clock', variant: 'warning', money: true },
-      { label: 'Alunos pagantes', value: '22', iconName: 'user' },
-      { label: 'Patrocinados', value: '2', hint: 'Atletas sem mensalidade', iconName: 'award', variant: 'sponsored' },
+      { label: 'Valor previsto', value: 'R$ 3.480,00', hint: 'Soma das mensalidades de quem é cobrado', iconName: 'wallet', variant: 'accent', highlight: true, money: true },
+      { label: 'Valor recebido', value: 'R$ 2.150,00', hint: 'Pagamentos com baixa registrada neste mês', iconName: 'trendUp', variant: 'success', highlight: true, money: true },
+      { label: 'Valor a receber', value: 'R$ 1.330,00', hint: 'Previsto menos recebido', iconName: 'clock', variant: 'warning', highlight: true, money: true },
+      { label: 'Alunos pagantes', value: '22', iconName: 'user', variant: 'sponsored' },
+      { label: 'Patrocinados', value: '2', hint: 'Atletas sem mensalidade', iconName: 'award', variant: 'pink' },
     ].map(statCard)),
   ]),
 
   el('section', { class: 'section' }, [
     el('h2', { class: 'section__title', text: 'Atalhos' }),
     el('div', { class: 'shortcut-grid' }, [
-      ['Adicionar aluno', 'plus'],
-      ['Adicionar turma', 'plus'],
-      ['Abrir agenda', 'calendar'],
-      ['Planejar aula', 'clipboard'],
-      ['Lista de espera', 'bell'],
-      ['Registrar pagamento', 'wallet'],
-    ].map(([label, iconName]) =>
-      el('button', { type: 'button', class: 'shortcut' }, [
+      ['Adicionar aluno', 'plus', ''],
+      ['Adicionar turma', 'plus', 'success'],
+      ['Abrir agenda', 'calendar', 'sponsored'],
+      ['Planejar aula', 'clipboard', 'warning'],
+      ['Lista de espera', 'bell', 'pink'],
+      ['Registrar pagamento', 'wallet', 'info'],
+    ].map(([label, iconName, variant]) =>
+      el('button', { type: 'button', class: `shortcut${variant ? ` shortcut--${variant}` : ''}` }, [
         el('span', { class: 'shortcut__icon', html: icon(iconName, 18) }),
         el('span', { text: label }),
       ]),
@@ -79,27 +86,103 @@ render(document.getElementById('page-content'), [
   ]),
 
   el('section', { class: 'section' }, [
-    el('h2', { class: 'section__title', text: 'Turmas' }),
+    el('h2', { class: 'section__title', text: 'Turmas · filtro e cards' }),
+    weekdayFilterBar({
+      days: [1, 2, 3, 4, 6],
+      counts: new Map([[1, 2], [2, 3], [3, 2], [4, 3], [6, 1]]),
+      total: 6,
+      selected: 2,
+      onSelect: () => {},
+    }),
     el('div', { class: 'grid-cards' }, [
-      ['Kids Iniciante', 'Segunda e Quarta · 17:00 · 60 min', '7/8 alunos', 'success', 'Kids'],
-      ['Adulto Noite', 'Terça e Quinta · 18:00 · 60 min', '8/8 alunos', 'warning', 'Turma cheia'],
-      ['Avançado', 'Sábado · 09:00 · 90 min', '5 alunos matriculados', 'neutral', 'Adulto'],
-    ].map(([name, meta, occupancy, variant, badge]) =>
-      el('article', { class: 'card card--link' }, [
-        el('div', { class: 'card__header' }, [
-          el('div', {}, [
-            el('h3', { class: 'card__title', text: name }),
-            el('p', { class: 'card__meta', text: meta }),
-          ]),
-          el('span', { class: `badge badge--${variant}`, text: badge }),
-        ]),
-        el('p', { class: 'card__meta', text: occupancy }),
-        el('div', { class: 'card__footer' }, [
-          el('button', { type: 'button', class: 'btn btn--ghost btn--sm', text: 'Editar' }),
-          el('button', { type: 'button', class: 'btn btn--secondary btn--sm', text: 'Ver turma' }),
-        ]),
+      { id: 'k', name: 'Kids Iniciante', category: 'kids', student_count: 7, capacity: 8,
+        class_schedules: [
+          { day_of_week: 1, start_time: '17:00', end_time: '18:00' },
+          { day_of_week: 3, start_time: '17:00', end_time: '18:00' },
+        ] },
+      { id: 'a', name: 'Adulto Noite', category: 'adulto', student_count: 8, capacity: 8,
+        class_schedules: [
+          { day_of_week: 2, start_time: '18:00', end_time: '19:00' },
+          { day_of_week: 4, start_time: '18:00', end_time: '19:00' },
+        ] },
+      { id: 'v', name: 'Avançado Sábado', category: 'adulto', student_count: 5, capacity: null,
+        class_schedules: [{ day_of_week: 6, start_time: '09:00', end_time: '10:30' }] },
+      { id: 'd', name: 'Kids Domingo', category: 'kids', student_count: 4, capacity: 10,
+        class_schedules: [{ day_of_week: 0, start_time: '08:00', end_time: '09:00' }] },
+      { id: 's', name: 'Sexta Livre', category: 'adulto', student_count: 6, capacity: 8,
+        class_schedules: [{ day_of_week: 5, start_time: '19:00', end_time: '20:00' }] },
+    ].map((turma) => classCard(turma, { onEdit: () => {}, onDelete: () => {} }))),
+  ]),
+
+  el('section', { class: 'section' }, [
+    el('h2', { class: 'section__title', text: 'Conexão · os quatro estados' }),
+    // Marcação escrita à mão de propósito: o componente de verdade mostra o
+    // estado REAL da conexão, e aqui a intenção é ver os quatro lado a lado.
+    el('div', { class: 'card row row--wrap' }, [
+      ['online', '●', 'Online'],
+      ['offline', '●', 'Offline · 2 pendentes'],
+      ['syncing', '↻', 'Sincronizando...'],
+      ['synced', '✓', 'Sincronizado'],
+    ].map(([estado, marca, rotulo]) =>
+      el('div', { class: `conn conn--${estado}` }, [
+        el('span', { class: 'conn__mark', text: marca }),
+        el('span', { class: 'conn__label', text: rotulo }),
       ]),
     )),
+  ]),
+
+  el('section', { class: 'section' }, [
+    el('h2', { class: 'section__title', text: 'Lista de espera · vários horários por pessoa' }),
+    el('div', { class: 'card card--flush' }, [
+      {
+        name: 'João Silva',
+        interests: [
+          { class_id: 't1', name: 'Adulto Noite', class_schedules: [
+            { day_of_week: 1, start_time: '18:00', end_time: '19:00' },
+            { day_of_week: 3, start_time: '18:00', end_time: '19:00' },
+          ] },
+          { class_id: 't2', name: 'Adulto Tarde', class_schedules: [
+            { day_of_week: 2, start_time: '19:00', end_time: '20:00' },
+            { day_of_week: 4, start_time: '19:00', end_time: '20:00' },
+          ] },
+          { class_id: 't3', name: 'Avançado Sábado', class_schedules: [
+            { day_of_week: 6, start_time: '09:00', end_time: '10:00' },
+          ] },
+        ],
+      },
+      {
+        name: 'Maria Santos',
+        desired_slot: 'Sábado de manhã, qualquer horário',
+        interests: [],
+      },
+    ].map((pessoa) =>
+      el('div', { class: 'list-item' }, [
+        el('div', { class: 'stack-tight' }, [
+          el('p', { class: 'list-item__title', text: pessoa.name }),
+          interestBadges(pessoa),
+        ]),
+        el('span', { class: 'badge badge--info', text: 'Aguardando' }),
+      ]),
+    )),
+  ]),
+
+  el('section', { class: 'section' }, [
+    el('h2', { class: 'section__title', text: 'Alunos · nível e perfil' }),
+    el('div', { class: 'grid-cards' }, [
+      studentCard(
+        { id: '1', name: 'João Silva', category: 'kids', phone: '82999998888', guardian_name: 'Maria Silva' },
+        'ok', { onEdit: () => {}, onDelete: () => {} },
+      ),
+      studentCard(
+        { id: '2', name: 'Ana Souza', category: 'adulto', phone: '82988887777' },
+        'overdue', { onEdit: () => {}, onDelete: () => {} },
+      ),
+      studentSummaryCard(
+        { id: '3', name: 'Carla Dias', category: 'kids', phone: '82977776666',
+          guardian_name: 'Paulo Dias', monthly_fee_cents: 15000, due_day: 10 },
+        'ok',
+      ),
+    ]),
   ]),
 
   el('section', { class: 'section' }, [

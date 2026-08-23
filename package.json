@@ -1,9 +1,9 @@
 {
-  "name": "sistema-professores",
+  "name": "matchphoint",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Sistema de gestão de aulas de Beach Tennis — MVP em HTML, CSS e JavaScript puro com Supabase.",
+  "description": "MatchPhoint — sistema de gestão de aulas de Beach Tennis em HTML, CSS e JavaScript puro com Supabase.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

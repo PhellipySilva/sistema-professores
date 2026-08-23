@@ -8,6 +8,8 @@
  */
 
 import { supabase } from './supabase.js';
+import { clearOfflineData } from './offline/idb.js';
+import { syncOutbox } from './offline/sync.js';
 
 export const LOGIN_PAGE = '/login.html';
 export const HOME_PAGE = '/pages/dashboard.html';
@@ -40,8 +42,17 @@ export async function signIn(email, password) {
   return { ok: true };
 }
 
-/** Sai do sistema e volta para o login. */
+/**
+ * Sai do sistema e volta para o login.
+ *
+ * Antes de sair, tenta subir o que ficou pendente e APAGA o banco local. O
+ * aparelho pode ser compartilhado, e o cache offline guarda nome, telefone e
+ * situação financeira dos alunos de quem estava logado — sair da conta tem que
+ * levar esses dados junto.
+ */
 export async function signOut() {
+  await flushAndClearOfflineData();
+
   const { error } = await supabase.auth.signOut();
 
   if (error) {
@@ -49,6 +60,24 @@ export async function signOut() {
     console.error('[auth] falha no logout', error);
   }
   window.location.replace(LOGIN_PAGE);
+}
+
+/** Última tentativa de sincronizar antes de o cache local ser apagado. */
+async function flushAndClearOfflineData() {
+  try {
+    const session = await getSession();
+    if (session?.user?.id) await syncOutbox(session.user.id);
+  } catch (error) {
+    // Falhar aqui não pode impedir o logout: a pendência que não subiu é menos
+    // grave do que o professor não conseguir sair da conta.
+    console.warn('[auth] não foi possível sincronizar antes de sair', error);
+  }
+
+  try {
+    await clearOfflineData();
+  } catch (error) {
+    console.warn('[auth] não foi possível limpar o banco local', error);
+  }
 }
 
 /**

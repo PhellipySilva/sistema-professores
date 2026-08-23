@@ -9,8 +9,9 @@ import { icon } from '../components/icons.js';
 import { showSkeletons } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, render } from '../utils/dom.js';
-import { classCard, openClassModal } from './turmas-ui.js';
+import { classCard, openClassModal, weekdayFilterBar } from './turmas-ui.js';
 import { notifyVacancy } from '../lista-espera/notificacoes.js';
+import { weekdayName } from '../utils/dates.js';
 
 const { user } = await initPage('turmas');
 
@@ -18,6 +19,12 @@ const content = $('#page-content');
 
 /* A lista de alunos alimenta o seletor de matrícula do modal de turma. */
 let allStudents = [];
+
+/* Turmas em memória e o dia escolhido no filtro (null = todas).
+   O filtro é só de exibição: nada volta ao servidor quando o professor troca de
+   dia — a lista inteira já está aqui, e refiltrar é instantâneo. */
+let allClasses = [];
+let dayFilter = null;
 
 $('#page-actions').append(
   // A lista de espera é assunto de turma, então a porta de entrada dela fica
@@ -52,6 +59,8 @@ async function load() {
 }
 
 function renderClasses(classes) {
+  allClasses = classes;
+
   if (classes.length === 0) {
     render(
       content,
@@ -66,8 +75,90 @@ function renderClasses(classes) {
     return;
   }
 
+  // Um dia que deixou de existir (a última turma dele foi excluída ou mudou de
+  // horário) não pode continuar filtrando: a tela ficaria vazia sem explicação.
+  if (dayFilter !== null && !daysInUse().includes(dayFilter)) {
+    dayFilter = null;
+  }
+
+  // A barra de filtros é montada uma vez; só a lista é redesenhada a cada
+  // clique — é o mesmo desenho usado na busca de alunos.
   render(content, [
-    el('div', { class: 'grid-cards' }, classes.map((turma) =>
+    filterBar(),
+    el('div', { id: 'classes-results' }),
+  ]);
+  renderResults();
+}
+
+/** Dias que têm pelo menos uma turma, em ordem. */
+function daysInUse() {
+  const days = new Set();
+  for (const turma of allClasses) {
+    for (const schedule of turma.class_schedules ?? []) days.add(schedule.day_of_week);
+  }
+  return [...days].sort((a, b) => a - b);
+}
+
+function filterBar() {
+  const counts = new Map();
+  for (const turma of allClasses) {
+    for (const day of new Set((turma.class_schedules ?? []).map((s) => s.day_of_week))) {
+      counts.set(day, (counts.get(day) ?? 0) + 1);
+    }
+  }
+
+  return weekdayFilterBar({
+    days: daysInUse(),
+    counts,
+    total: allClasses.length,
+    selected: dayFilter,
+    onSelect: (day) => {
+      // Clicar no dia já ativo volta para 'Todas' — evita o beco sem saída de
+      // ter que procurar o botão certo para desfazer o filtro.
+      dayFilter = day === dayFilter ? null : day;
+      render(content, [filterBar(), el('div', { id: 'classes-results' })]);
+      renderResults();
+    },
+  });
+}
+
+function filteredClasses() {
+  if (dayFilter === null) return allClasses;
+
+  return allClasses.filter((turma) =>
+    (turma.class_schedules ?? []).some((schedule) => schedule.day_of_week === dayFilter),
+  );
+}
+
+function renderResults() {
+  const container = $('#classes-results');
+  if (!container) return;
+
+  const list = filteredClasses();
+
+  if (list.length === 0) {
+    render(
+      container,
+      emptyState({
+        iconName: 'calendar',
+        title: 'Nenhuma turma neste dia',
+        message: `Você não tem turmas em ${weekdayName(dayFilter).toLowerCase()}.`,
+        actionLabel: 'Ver todas as turmas',
+        onAction: () => {
+          dayFilter = null;
+          renderClasses(allClasses);
+        },
+      }),
+    );
+    return;
+  }
+
+  render(container, [
+    el('p', {
+      class: 'section__title',
+      text: `${list.length} turma${list.length > 1 ? 's' : ''}`,
+    }),
+    el('div', { class: 'grid-cards' }, list.map((turma) =>
       classCard(turma, { onEdit: openEdit, onDelete: confirmDelete }),
     )),
   ]);

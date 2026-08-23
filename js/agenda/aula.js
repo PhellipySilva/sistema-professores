@@ -9,7 +9,7 @@ import { errorState } from '../components/empty-state.js';
 import { showLoading } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, getQueryParam, render } from '../utils/dom.js';
-import { formatDateLongBR, formatTimeRange, getDayOfWeek } from '../utils/dates.js';
+import { formatDateLongBR, formatDateShortBR, formatTimeRange, getDayOfWeek } from '../utils/dates.js';
 import { studentsForDay } from '../turmas/matriculas.js';
 import { attendanceRow, attendanceSummary, countStatuses } from './frequencia.js';
 import { openMakeupModal } from '../reposicoes/reposicoes.js';
@@ -157,7 +157,13 @@ function openMakeup(student) {
  */
 async function saveStatus(studentId, status) {
   try {
-    await setAttendance(user.id, { session_id: sessionId, student_id: studentId, status });
+    await setAttendance(
+      user.id,
+      { session_id: sessionId, student_id: studentId, status },
+      // Rótulo usado só se esta marcação virar conflito de sincronização: o
+      // professor precisa reconhecer de quem e de quando é a decisão pedida.
+      { label: `${nameOf(studentId)} · ${formatDateShortBR(session.session_date)}` },
+    );
   } catch (error) {
     toast.error(handleError(error, 'Não foi possível salvar a presença. Tente de novo.'));
     return false;
@@ -181,6 +187,15 @@ async function saveGuestStatus(guest, studentId, status) {
     }
   }
   return true;
+}
+
+/** Nome do aluno (ou do convidado em reposição) já carregado na tela. */
+function nameOf(studentId) {
+  return (
+    students.find((student) => student.id === studentId)?.name ??
+    guests.find((guest) => guest.id === studentId)?.name ??
+    'Aluno'
+  );
 }
 
 function refreshSummary() {

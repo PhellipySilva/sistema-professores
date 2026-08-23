@@ -1,4 +1,6 @@
-# Análise Arquitetural — Sistema de Gestão de Aulas de Beach Tennis (MVP)
+# Análise Arquitetural — MatchPhoint (MVP)
+
+> Sistema de gestão de aulas de Beach Tennis.
 
 > Documento de referência produzido antes da implementação, conforme seção 47 da `spec.md`.
 > Toda decisão que se afasta da spec está marcada com **⚠️ Desvio** e justificada.
@@ -63,10 +65,16 @@ Navegador
 | **Domínio** | `js/<modulo>/<modulo>.js` | Regras de negócio, orquestração, estado da página | escrever SQL |
 | **UI** | `js/<modulo>/<modulo>-ui.js`, `js/components/*` | Gerar HTML, ler formulários, eventos | chamar Supabase |
 | **Utils** | `js/utils/*.js` | Datas, moeda, validação, formatação | conhecer o domínio |
+| **Offline** | `js/offline/*.js` | Cópia local (IndexedDB), fila de pendências, sincronização | decidir conteúdo |
 
 Regra prática, verificável com um `grep`:
 
-> **`supabase` só aparece em `js/api/` e `js/auth.js`. `document` nunca aparece em `js/api/`.**
+> **`supabase` só aparece em `js/api/`, `js/auth.js` e `js/offline/sync.js`. `document` nunca aparece
+> em `js/api/`.**
+
+`sync.js` é a única exceção, e é deliberada: reenviar uma pendência é uma escrita como outra
+qualquer, mas ela não pode passar por `js/api/` — as funções de lá decidem sozinhas entre rede e
+fila, e chamá-las durante a sincronização faria a pendência voltar para a fila de onde saiu.
 
 Isso resolve literalmente a exigência da seção 4: *"Evitar misturar SQL, regras de negócio e
 manipulação do DOM no mesmo arquivo."*
@@ -129,11 +137,26 @@ manipulação do DOM no mesmo arquivo."*
 │   ├── reposicoes/reposicoes.js
 │   ├── planejamentos/planejamentos.js
 │   │
+│   ├── offline/                # funcionamento sem internet (seção 12b)
+│   │   ├── idb.js              # IndexedDB em quatro funções
+│   │   ├── cache.js            # leitura com cópia local
+│   │   ├── status.js           # estado da conexão (sem dependência)
+│   │   ├── outbox.js           # fila de escritas pendentes
+│   │   ├── conflitos.js        # a REGRA do conflito — pura, testada
+│   │   ├── sync.js             # sobe a fila quando a conexão volta
+│   │   ├── conflitos-ui.js     # a decisão que só o professor pode tomar
+│   │   └── register-sw.js
+│   │
 │   └── utils/
 │       ├── dates.js
 │       ├── formatters.js       # moeda, telefone, categoria
 │       ├── validators.js
-│       └── dom.js              # ⚠️ NOVO — $, $$, el(), on() — 30 linhas
+│       └── dom.js              # ⚠️ NOVO — $, $, el(), on() — 30 linhas
+│
+├── public/                     # copiado tal e qual para a raiz do site
+│   ├── sw.js                   # Service Worker — faz a página ABRIR sem rede
+│   ├── manifest.webmanifest
+│   └── icons/
 │
 ├── assets/{images,icons}
 ├── supabase/
@@ -330,7 +353,6 @@ comparar sem parsing.
 | user_id | uuid NOT NULL | |
 | name | text NOT NULL | |
 | phone | text NOT NULL | contato é obrigatório aqui — sem ele a fila não serve |
-| class_id | uuid | FK **simples** → `classes(id)` `ON DELETE SET NULL` |
 | desired_slot | text NOT NULL | horário desejado em texto, sobrevive à exclusão da turma |
 | notes | text | |
 | status | text NOT NULL | `waiting` / `contacted` / `enrolled` / `removed` |
@@ -343,8 +365,35 @@ categoria, não tem mensalidade, não entra em chamada e não pode aparecer nas 
 **⚠️ Sem coluna `position`.** A ordem da fila é `created_at`. Uma coluna de posição teria que ser
 renumerada a cada saída — trabalho extra para reproduzir o que a data de entrada já diz.
 
-FKs simples (não compostas) porque `ON DELETE SET NULL` anularia `user_id` junto — a mesma razão
-explicada em `makeups`.
+**⚠️ Sem coluna `class_id`** (removida em `0007`). As turmas de interesse passaram para
+`waitlist_entry_classes`, abaixo. `student_id` continua com FK simples porque `ON DELETE SET NULL`
+anularia `user_id` junto — a mesma razão explicada em `makeups`.
+
+### waitlist_entry_classes
+| coluna | tipo | notas |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid NOT NULL | |
+| entry_id | uuid NOT NULL | FK composta → `waitlist_entries(id, user_id)` CASCADE |
+| class_id | uuid NOT NULL | FK composta → `classes(id, user_id)` CASCADE |
+| created_at | timestamptz | |
+| | | `UNIQUE (entry_id, class_id)` |
+
+**Por que uma tabela, e não um `uuid[]` em `waitlist_entries`.** Um array pareceria mais barato e
+perderia as duas coisas que fazem a lista funcionar: a **integridade** (turma excluída sumiria do
+array sem o banco saber; aqui o FK resolve sozinho) e a **pergunta que mais importa** — "quem está
+esperando por ESTA turma?", feita a cada saída de aluno, que com tabela é índice e com array seria
+varredura. É a mesma decisão já tomada em `class_students`: relação N:N vira tabela.
+
+**A duplicata é barrada pelo banco**, não pela tela: `UNIQUE (entry_id, class_id)` impede a mesma
+turma duas vezes para a mesma pessoa, mesmo com duas abas abertas.
+
+**Uma pessoa aparece em várias filas, e isso é o certo.** Quem marcou "Seg/Qua 18h" e "Sáb 09h"
+está nas duas, com posição própria em cada uma — a posição é derivada de `created_at` na hora de
+exibir (`groupWaitlistByClass`, em `js/lista-espera/vagas.js`).
+
+**Turma excluída leva o interesse junto** (CASCADE), e a pessoa continua na fila: o `desired_slot`
+em texto ainda descreve o que ela procurava.
 
 ### waitlist_notifications
 | coluna | tipo | notas |
@@ -373,12 +422,25 @@ matriculado some, sem nada para sincronizar.
 | title | text NOT NULL | |
 | description | text | |
 | lesson_date | date NOT NULL | |
+| class_id | uuid | FK **simples** → `classes(id)` `ON DELETE SET NULL` · NULL = plano geral |
 | created_at / updated_at | timestamptz | |
+
+**`class_id` opcional é a funcionalidade inteira** (migration `0008`): com turma, o plano é daquela
+turma; sem turma, é geral e reaproveitável em qualquer uma. As duas formas moram na mesma tabela
+porque são a mesma coisa — o que muda é a existência do vínculo, não a natureza do registro.
+
+FK **simples** de propósito: com `ON DELETE SET NULL`, excluir a turma transforma o plano em
+planejamento geral em vez de apagá-lo. É literalmente a regra pedida ("não excluir o planejamento
+ao remover o vínculo"), garantida pelo banco. Composta não serviria: `SET NULL` anularia `user_id`
+junto, que é `NOT NULL`.
 
 ### Índices
 `(user_id)` em todas; `students(user_id, name)`; `class_sessions(user_id, session_date)`;
 `attendance(session_id)`, `attendance(student_id)`; `payments(student_id, reference_month desc)`;
-`class_students(student_id)`; `makeups(student_id, status)`.
+`class_students(student_id)`; `makeups(student_id, status)`;
+`waitlist_entry_classes(user_id, class_id)` — o índice da pergunta "quem quer esta turma?";
+`lesson_plans(user_id, class_id) WHERE class_id IS NOT NULL` — parcial, porque plano geral não
+precisa ser indexado por uma turma que ele não tem.
 
 ---
 
@@ -394,7 +456,11 @@ auth.users (1) ──(1) profiles
      │                                                        │
      ├──(N) classes                                           ├──(N) attendance
      ├──(N) class_sessions                                    └──(N) makeups
-     └──(N) lesson_plans                                        (original / makeup)
+     ├──(N) lesson_plans ──(0..1) classes                        (original / makeup)
+     │        (NULL = planejamento geral)
+     │
+     └──(N) waitlist_entries ──(N) waitlist_entry_classes ──(N) classes
+                                    (uma pessoa, vários horários)
 ```
 
 - **Aluno ↔ Turma:** N:N via `class_students` (seção 15). Nenhum dado de aluno é copiado.
@@ -706,12 +772,39 @@ deixar a fila sem resposta. Na exclusão do aluno, as turmas dele são lidas **a
 depois, o vínculo já foi embora em cascata.
 
 **O sistema nunca matricula ninguém sozinho.** O aviso informa; quem decide é o professor. O botão
-"Adicionar à turma" abre o mesmo formulário de cadastro de aluno, já preenchido com nome, telefone
-e turma desejada — o aluno que entra pela fila nasce com categoria, mensalidade e vencimento como
+"Matricular" abre o mesmo formulário de cadastro de aluno, já preenchido com nome, telefone
+e a turma pela qual a pessoa está sendo chamada — o aluno que entra pela fila nasce com categoria, mensalidade e vencimento como
 qualquer outro.
 
 Estados do aviso: `new` (vermelho) → `seen` (amarelo, marcado ao abrir a tela) → `resolved`
 (verde, escolha do professor). Ele **não** some sozinho.
+
+### Vários horários por pessoa
+
+Quem procura vaga raramente quer um horário só: "serve segunda e quarta às 18h, ou terça e quinta
+às 19h, ou sábado de manhã". Com uma turma por pessoa, o professor tinha que cadastrar a mesma
+gente três vezes — três telefones iguais, três posições na fila, e a matrícula em uma delas
+deixando as outras duas para trás.
+
+Os interesses vivem em `waitlist_entry_classes`. A consulta "quem está esperando por esta turma?"
+filtra pela tabela de ligação com `!inner` (INNER JOIN no PostgREST), em vez de trazer a fila
+inteira para o navegador filtrar.
+
+A tela tem **duas visões**, e elas respondem a perguntas diferentes:
+
+| Visão | Pergunta | Uma pessoa aparece |
+|---|---|---|
+| Pessoas na lista | "quem espera, e por quais horários?" | uma vez, com todos os selos |
+| Fila por turma | "quem está na fila DESTA turma?" | em cada fila que ela quer |
+
+A segunda é a que importa quando abre uma vaga, e é por isso que a duplicação entre grupos é o
+comportamento correto: a posição de alguém é diferente em cada fila (entrou antes de um na
+primeira, depois de dois na segunda).
+
+O `desired_slot` em texto continua existindo e continua `NOT NULL`: é o que descreve o interesse de
+quem não marcou turma nenhuma ("sábado de manhã, qualquer horário") e o que sobrevive se todas as
+turmas marcadas forem excluídas. A interface o preenche a partir das turmas escolhidas, e para de
+mexer nele assim que o professor escreve o dele.
 
 ---
 
@@ -720,6 +813,96 @@ Estados do aviso: `new` (vermelho) → `seen` (amarelo, marcado ao abrir a tela)
 CRUD direto sobre `lesson_plans`, agrupado por mês, mais recente primeiro.
 Criar/editar em modal (título, descrição, data). Excluir com confirmação.
 Sem biblioteca de exercícios, sem categorias, sem editor rico (seção 22).
+
+### Com turma ou geral
+
+O formulário pergunta **"Vincular a uma turma?"** e só então mostra a lista de turmas. São duas
+perguntas encadeadas em vez de um select com opção vazia: "não vincular" é uma decisão, e um
+placeholder "Nenhuma" no meio da lista passaria despercebido justamente por quem não quer vincular.
+
+Regras, todas garantidas fora da interface:
+
+- escolher turma nunca é obrigatório;
+- o vínculo é editável depois, nos dois sentidos (geral ⇄ de turma);
+- remover o vínculo grava `class_id = NULL` — **não apaga o plano**;
+- excluir a turma também não apaga: o `ON DELETE SET NULL` transforma o plano em geral.
+
+A listagem sempre diz qual é o caso — o selo do horário na cor do dia, ou "Planejamento geral" com
+todas as letras. Um plano sem nenhuma menção a turma deixaria o professor em dúvida se tinha
+esquecido de escolher uma.
+
+---
+
+## 12b. Estratégia offline
+
+### O problema
+
+A quadra tem sinal ruim. A chamada é feita ali, com o celular na mão, e é a única coisa que o
+professor **precisa** conseguir fazer sem rede — o resto do dia ele consulta.
+
+Esconder a tela de erro não resolveria nada: sem Service Worker o navegador nem executa
+JavaScript quando está offline. São dois problemas distintos, e cada um tem seu arquivo.
+
+| Problema | Solução | Onde |
+|---|---|---|
+| A página não **abre** sem rede | Service Worker, rede primeiro e cache como reserva | `public/sw.js` |
+| Os **dados** não estão no aparelho | IndexedDB, escrito a cada leitura bem-sucedida | `js/offline/cache.js` |
+| Escrever sem rede | Fila de pendências idempotentes | `js/offline/outbox.js` |
+| Subir a fila e resolver choques | Sincronização com detecção de conflito | `js/offline/sync.js` + `conflitos.js` |
+
+### Leitura: o cache é uma fotografia, nunca uma decisão
+
+`cachedRead(chave, consulta)` envolve as funções de `js/api/` sem mudar o que elas devolvem: online
+busca no Supabase e guarda uma cópia; offline devolve a última cópia daquela **mesma** consulta.
+Por isso nenhuma tela precisou mudar para funcionar offline.
+
+Sem rede **e** sem cópia, o erro sobe e a tela mostra o estado de erro que ela já sabia mostrar.
+Inventar lista vazia seria pior: "nenhum aluno cadastrado" é uma mentira.
+
+A chave inclui o `user_id` (`a1b2:students`), e o logout apaga o banco local — o aparelho pode ser
+compartilhado, e o cache guarda telefone e situação financeira dos alunos.
+
+### Escrita: só frequência, e o porquê
+
+A pergunta não é "o que dá para gravar no navegador?" (tudo dá), e sim "o que pode ser reenviado
+depois sem inventar dado nem apagar o de ninguém?".
+
+Só a **frequência** passa com folga: é um `upsert` por `(session_id, student_id)`, não gera
+identificador, não depende de nada que ainda não exista, e repetir o envio dá o mesmo resultado.
+
+Cadastrar aluno, criar turma e registrar pagamento ficam de fora **de propósito**: são inserts que
+geram ids e disparam consequências (mensalidade do mês, aviso de vaga, matrícula) que o servidor
+precisa validar na hora. Enfileirá-los criaria alunos duplicados e contas erradas — estrago maior
+do que a espera pelo sinal voltar. Marcar chamada de aula ainda **não materializada** também fica
+de fora: exigiria inventar um id de sessão que pode colidir com o de outro aparelho.
+
+### Conflito: na dúvida, o servidor é preservado e a pergunta é feita
+
+Cada pendência guarda o `updated_at` que a linha tinha **quando a alteração foi feita**. Antes de
+gravar, `sync.js` lê a linha de novo e compara (`isConflict`, em `js/offline/conflitos.js`):
+
+| Situação | O que acontece |
+|---|---|
+| Servidor igual ao que eu vi | grava — é o caso normal |
+| Servidor mudou desde então | **não grava**: vira conflito, e o professor escolhe |
+| Não existia para mim, mas existe agora | conflito: alguém marcou enquanto eu estava sem sinal |
+| Eu ia apagar e a linha já sumiu | grava (o resultado já é o desejado) |
+
+A comparação é de **igualdade**, não "qual é mais recente": o relógio do celular pode estar errado,
+e um `last write wins` calado trocaria a presença que outro aparelho marcou por uma falta, sem
+ninguém ver. `conflitos.js` não conhece Supabase nem DOM — é testado em `/tests/`, como `vagas.js`.
+
+### Recuperação automática
+
+`navigator.onLine` não basta: Wi-Fi com portal de login e 4G oscilando são `onLine === true` com
+requisição falhando. O estado da conexão é alimentado pelos dois sinais — os eventos do navegador
+e o que aconteceu na última requisição.
+
+A armadilha do desenho ingênuo é ficar **preso** em offline: se uma falha marcasse o sistema como
+offline e as leituras seguintes desistissem sem tentar, nada o traria de volta (o evento `online`
+nunca chega, porque para o navegador a rede nunca caiu). Por isso `cachedRead` só pula a rede
+quando `browserIsOffline()` — o navegador com certeza — diz que sim; nos demais casos tenta de
+novo, e um sucesso devolve o sistema ao normal e dispara a sincronização.
 
 ---
 

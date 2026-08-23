@@ -81,9 +81,41 @@
     padding: 0 var(--space-3) var(--space-6);
   }
 
+  /* No celular o conteudo vale mais que a margem interna. */
   .card,
   .stat {
     padding: var(--space-4);
+  }
+
+  /* O card da turma tem faixas e cabeçalho tingido de ponta a ponta: o padding
+     mora nas partes internas, nunca no card. A regra acima não pode devolvê-lo. */
+  .class-card {
+    padding: 0;
+  }
+
+  .class-card__head,
+  .class-card__body {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  /* Indicador de conexão: sobra o ponto colorido, que é o que se lê de relance.
+     Escondido por recorte, e não por display:none — o leitor de tela continua
+     anunciando "Offline" quando o estado muda. */
+  .conn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .conn {
+    padding: var(--space-1);
+  }
+
+  .card--flush > * {
+    padding: var(--space-3) var(--space-4);
   }
 
   .section {
@@ -165,15 +197,24 @@
   }
 }
 
-/* Telas muito estreitas: a marca no topo fica só com o logo, para o nome do
-   professor continuar legível ao lado. */
+/* Telas muito estreitas: a marca encolhe para o nome do professor continuar
+   cabendo ao lado dela. São três blocos disputando a mesma faixa de 60px —
+   botão do menu, logo e perfil —, e quem cede é a logo. */
 @media (max-width: 400px) {
-  .topbar__brand-name {
-    display: none;
+  .topbar__brand {
+    width: 96px;
   }
 
   .user-chip__name {
-    max-width: 96px;
+    max-width: 84px;
+  }
+}
+
+/* Abaixo de 340px não há espaço para os três: o nome sai e fica só o avatar,
+   que continua abrindo o mesmo menu de perfil. */
+@media (max-width: 340px) {
+  .user-chip__name {
+    display: none;
   }
 }
 

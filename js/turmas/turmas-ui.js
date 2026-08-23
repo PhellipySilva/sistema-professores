@@ -5,10 +5,11 @@ import { icon } from '../components/icons.js';
 import { checkboxChips, selectField, showFieldErrors, textField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
 import { CATEGORIES, formatCategory } from '../utils/formatters.js';
+import { categoryBadge, weekdayBadges } from '../components/badges.js';
 import { addMinutesToTime, formatTime, formatWeekdayList, minutesBetween, weekdayShort } from '../utils/dates.js';
 import { validateCategory, validateName } from '../utils/validators.js';
 import { buildStudentPicker } from './aluno-picker.js';
-import { expandEnrollmentDays, normalizeEnrollmentDays } from './matriculas.js';
+import { classDaysOf, expandEnrollmentDays, normalizeEnrollmentDays } from './matriculas.js';
 import { formatOccupancy, isFull } from '../lista-espera/vagas.js';
 
 const WEEKDAY_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
@@ -16,31 +17,171 @@ const WEEKDAY_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
   label: weekdayShort(day),
 }));
 
-/** 'Segunda e Quarta · 17:00 – 18:00' */
+/** 'Segunda e Quarta · 17:00 · 60 min' */
 export function scheduleSummary(schedules) {
   if (schedules.length === 0) return 'Sem horário definido';
 
   const days = formatWeekdayList(schedules.map((schedule) => schedule.day_of_week));
+  const time = scheduleTime(schedules);
+  return time ? `${days} · ${time}` : days;
+}
+
+/**
+ * Só a parte de horário: '17:00 · 60 min'.
+ *
+ * Existe separada porque o card da turma mostra os dias como chips coloridos e
+ * precisa do resto do texto sem eles. Vazio quando os dias têm horários
+ * diferentes — aí não existe "o horário" da turma para exibir em uma linha.
+ */
+export function scheduleTime(schedules) {
+  const first = schedules[0];
+  if (!first) return '';
+
+  const sameTime = schedules.every((schedule) => schedule.start_time === first.start_time);
+  if (!sameTime) return '';
+
+  return `${formatTime(first.start_time)} · ${minutesBetween(first.start_time, first.end_time)} min`;
+}
+
+/**
+ * Versão curta da grade, para caber num selo: 'Seg/Qua 18h'.
+ *
+ * Existe porque a lista de espera mostra VÁRIOS horários lado a lado na mesma
+ * linha — com o formato longo ('Segunda e Quarta · 18:00 · 60 min') três
+ * interesses não caberiam na tela de um celular. Horários diferentes entre os
+ * dias devolvem só os dias: não existe "o horário" para resumir.
+ */
+export function scheduleShort(schedules) {
+  if (!schedules || schedules.length === 0) return '';
+
+  const days = [...new Set(schedules.map((schedule) => schedule.day_of_week))]
+    .sort((a, b) => a - b)
+    .map((day) => capitalize(weekdayShort(day)))
+    .join('/');
+
   const first = schedules[0];
   const sameTime = schedules.every((schedule) => schedule.start_time === first.start_time);
 
-  if (sameTime) {
-    const duration = minutesBetween(first.start_time, first.end_time);
-    return `${days} · ${formatTime(first.start_time)} · ${duration} min`;
-  }
-  return days;
+  return sameTime ? `${days} ${shortTime(first.start_time)}` : days;
 }
 
+/* A inicial maiúscula é feita aqui, e não com text-transform no CSS: este texto
+   também é GRAVADO (vira o `desired_slot` da lista de espera) e lido em lugares
+   sem estilo nenhum. 'ter/qui' salvo no banco seria descuido. */
+function capitalize(word) {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/** '18:00:00' → '18h' · '18:30:00' → '18h30' */
+function shortTime(time) {
+  const [hour, minute] = formatTime(time).split(':');
+  return minute === '00' ? `${Number(hour)}h` : `${Number(hour)}h${minute}`;
+}
+
+/* ============================================================
+   Filtro por dia da semana
+   ============================================================ */
+
+/**
+ * Barra de chips: 'Todas' mais um chip por dia que TEM turma.
+ *
+ * Só os dias com turma aparecem — uma barra com sete dias fixos ofereceria
+ * filtros que devolvem lista vazia, e o professor de terça e quinta veria cinco
+ * botões inúteis. É também o que a funcionalidade pede quanto ao domingo:
+ * ele entra quando existir turma nele.
+ *
+ * O chip carrega um ponto na cor do dia, a mesma dos chips do card, para as
+ * duas coisas serem lidas como a mesma linguagem.
+ *
+ * @param {object}        options
+ * @param {number[]}      options.days      dias existentes, em ordem
+ * @param {Map<number,number>} options.counts  quantas turmas por dia
+ * @param {number|null}   options.selected  dia ativo, ou null para 'Todas'
+ * @param {Function}      options.onSelect
+ */
+export function weekdayFilterBar({ days, counts, selected, onSelect, total }) {
+  const chip = ({ day, label, count, ativo }) =>
+    el('button', {
+      type: 'button',
+      class: 'filter-chip',
+      'aria-pressed': ativo ? 'true' : 'false',
+      onclick: () => onSelect(day),
+    }, [
+      day === null ? null : el('span', { class: `filter-chip__dot day-${day}` }),
+      el('span', { text: label }),
+      el('span', { class: 'filter-chip__count', text: String(count) }),
+    ]);
+
+  return el('div', {
+    class: 'filter-bar',
+    role: 'group',
+    'aria-label': 'Filtrar turmas por dia da semana',
+  }, [
+    chip({ day: null, label: 'Todas', count: total, ativo: selected === null }),
+    ...days.map((day) =>
+      chip({
+        day,
+        label: weekdayShort(day),
+        count: counts.get(day) ?? 0,
+        ativo: selected === day,
+      }),
+    ),
+  ]);
+}
+
+/**
+ * Barra do topo do card: um segmento por dia da turma, cada um na cor do dia.
+ *
+ * É a solução para a turma de vários dias sem poluir o card — 'Seg • Qua • Sex'
+ * vira três faixas de cor, lidas de uma vez, e os chips logo abaixo dizem quais
+ * dias são. Turma de um dia só recebe uma faixa inteira, o que dá o mesmo
+ * resultado visual de uma borda colorida.
+ */
+function dayStripe(days) {
+  const segments = days.length > 0 ? days : [null];
+
+  return el('div', { class: 'class-card__stripe', 'aria-hidden': 'true' },
+    segments.map((day) =>
+      el('span', { class: `class-card__segment${day === null ? '' : ` day-${day}`}` }),
+    ),
+  );
+}
+
+/**
+ * Card da turma, com a cor do dia como identidade.
+ *
+ * A cor do CARD (cabeçalho tingido, ícone) é a do primeiro dia; a barra do topo
+ * mostra todos. Ver a nota de .class-card em css/components.css — nenhuma cor é
+ * escolhida aqui, só a classe do dia.
+ */
 export function classCard(turma, { onEdit, onDelete }) {
-  return el('article', { class: 'card' }, [
-    el('div', { class: 'card__header' }, [
-      el('div', {}, [
-        el('a', { class: 'card__title', href: `/pages/turma.html?id=${turma.id}`, text: turma.name }),
-        el('p', { class: 'card__meta', text: scheduleSummary(turma.class_schedules) }),
+  const schedules = turma.class_schedules ?? [];
+  const days = classDaysOf(turma);
+  const time = scheduleTime(schedules);
+  const primaryDay = days[0];
+
+  return el('article', {
+    class: `card class-card${primaryDay === undefined ? '' : ` day-${primaryDay}`}`,
+  }, [
+    dayStripe(days),
+    el('div', { class: 'class-card__head' }, [
+      el('div', { class: 'card__header' }, [
+        el('div', { class: 'stack-tight' }, [
+          el('a', { class: 'card__title', href: `/pages/turma.html?id=${turma.id}`, text: turma.name }),
+          // Os dias viram chips coloridos; o horário continua texto. A cor serve
+          // para achar a turma de terça no meio da lista sem ler dia por dia.
+          schedules.length > 0
+            ? el('div', { class: 'row row--wrap' }, [
+                weekdayBadges(schedules),
+                time ? el('p', { class: 'card__meta', text: time }) : null,
+              ])
+            : el('p', { class: 'card__meta', text: 'Sem horário definido' }),
+        ]),
+        categoryBadge(turma.category),
       ]),
-      el('span', { class: 'badge badge--neutral', text: formatCategory(turma.category) }),
     ]),
-    el('div', { class: 'row' }, [
+    el('div', { class: 'class-card__body' }, [
+      el('span', { class: 'class-card__icon', html: icon('users', 18) }),
       el('p', { class: 'card__meta', text: formatOccupancy(turma.student_count, turma.capacity) }),
       isFull(turma.capacity, turma.student_count)
         ? el('span', { class: 'badge badge--warning', text: 'Turma cheia' })

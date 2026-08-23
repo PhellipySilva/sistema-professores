@@ -38,13 +38,12 @@
   background-color: var(--color-surface-alt);
 }
 
+/* A topbar já é branca, então aqui a logo dispensa a plaquinha e entra direto. */
 .topbar__brand {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--letter-spacing-tight);
+  flex-shrink: 0;
+  width: 122px;
 }
 
 /* Empurra o perfil para a direita, seja qual for o que existe à esquerda. */
@@ -52,26 +51,34 @@
   flex: 1;
 }
 
-/* ---------- Marca ---------- */
+/* ---------- Marca ----------
+   O arquivo da logo é PNG sem canal alfa: o fundo dela é branco de verdade, não
+   transparente. Sobre a topbar e o cartão de login isso passa despercebido, mas
+   sobre a sidebar escura viraria um retângulo branco no meio do menu. Daí a
+   `.brand-plate`: a logo ganha uma plaquinha branca de cantos arredondados e o
+   retângulo passa a ser intencional em vez de acidente. */
 
-.brand-logo {
-  display: grid;
-  place-items: center;
+.brand-lockup {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.brand-plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-surface);
   border-radius: var(--radius-md);
-  background-color: var(--color-primary);
-  color: var(--color-text-inverse);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: var(--letter-spacing-wide);
 }
 
-.brand-logo--lg {
-  width: 38px;
-  height: 38px;
-}
+/* Larguras da logo por contexto. A altura acompanha, porque a proporção do
+   arquivo é fixa e a imagem nunca é esticada. */
+.brand-plate--sm { width: 122px; }
+.brand-plate--md { width: 166px; }
+.brand-plate--lg { width: 208px; }
 
 /* ============================================================
    Perfil do usuário (topbar)
@@ -242,18 +249,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-2) var(--space-5);
-}
-
-.sidebar__brand-name {
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-tight);
-  color: var(--color-nav-text-strong);
-}
-
-.sidebar__brand-tagline {
-  font-size: var(--font-size-xs);
-  color: var(--color-nav-text);
+  padding: var(--space-1) var(--space-1) var(--space-5);
 }
 
 /* Botão de fechar o drawer — só existe no celular. */
@@ -432,22 +428,24 @@
   box-shadow: var(--shadow-md);
 }
 
-/* A marca no login tem classes próprias: as da sidebar são escritas para fundo
-   escuro, e o texto branco delas sumiria dentro do cartão branco. */
+/* No login a marca aparece inteira e sem plaquinha: o cartão já é branco, igual
+   ao fundo do arquivo da logo. O nome do sistema vem desenhado nela, então
+   sobra só a descrição do que o sistema faz. */
 .auth__brand {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-2);
   margin-bottom: var(--space-8);
 }
 
-.auth__brand-name {
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-tight);
+.auth__brand-logo {
+  width: 208px;
+  max-width: 100%;
+  height: auto;
 }
 
 .auth__brand-tagline {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 

@@ -25,7 +25,7 @@
   --color-accent: #f97316;
 
   /* ---------- Cores: superfícies ---------- */
-  --color-background: #f4f6f9;
+  --color-background: #f5f7fa;
   --color-surface: #ffffff;
   --color-surface-alt: #f1f3f7;
   --color-border: #e7eaf0;
@@ -45,6 +45,14 @@
   /* ---------- Cores: texto ---------- */
   --color-text: #0f1420;
   --color-text-muted: #6b7382;
+  /* O MESMO cinza, dois passos mais escuro, para uso sobre superfície TINGIDA
+     (card do aluno, cabeçalho do card da turma). Não é enfeite: #6b7382 tem
+     4.77:1 sobre branco e cai para 4.37:1 sobre o azul claríssimo do card de
+     adulto — abaixo do mínimo de 4.5:1 que texto pequeno precisa. Este tom
+     devolve a margem em todos os fundos tingidos do sistema.
+     Aplicado redefinindo --color-text-muted dentro do card (ver components.css),
+     então nenhum componente precisou saber que está sobre cor. */
+  --color-text-muted-tinted: #636b7a;
   /* Terceiro nível: ícone auxiliar, marca d'água, texto de apoio de apoio. */
   --color-text-subtle: #98a0af;
   --color-text-inverse: #ffffff;
@@ -58,6 +66,17 @@
   --color-danger-soft: #fdecec;
   --color-warning: #b45309;
   --color-warning-soft: #fdf3e2;
+
+  /* Versões mais vivas das mesmas cores, para ÍCONE apenas.
+     Um ícone é elemento gráfico: basta 3:1 de contraste. Texto pequeno precisa
+     de 4.5:1, e é por isso que os selos e os números continuam usando os tons
+     escuros acima — a interface ganha vida no ícone sem perder legibilidade em
+     lugar nenhum. */
+  --color-success-vivid: #16a34a;
+  --color-danger-vivid: #dc2626;
+  --color-warning-vivid: #ea580c;
+  --color-sponsored-vivid: #7c3aed;
+  --color-info-vivid: #0891b2;
   /* Info virou TEAL: com a marca azul, um "info" azul viraria a mesma cor da
      ação principal e o usuário perderia a distinção entre destaque e aviso. */
   --color-info: #0e7490;
@@ -66,6 +85,69 @@
      categoria à parte, e precisa de uma cor que ninguém mais use. */
   --color-sponsored: #6d28d9;
   --color-sponsored-soft: #f0ebfd;
+
+  /* Rosa: a sexta cor da paleta de destaque, para o que não é estado nem
+     categoria — o atalho da lista de espera, o card de patrocinados na
+     dashboard. Ter nome próprio já provou o seu valor: a categoria Kids era
+     rosa, virou verde, e nada que usa este token precisou ser tocado. */
+  --color-pink: #be185d;
+  --color-pink-soft: #fce7f3;
+  --color-pink-vivid: #db2777;
+
+  /* ---------- Cores: categoria da turma e do aluno ----------
+     VERDE para Kids, AZUL para Adulto: é a leitura que o professor pediu, e ela
+     manda no card inteiro do aluno (ver .student-card em components.css), não só
+     num selo.
+
+     Os dois tons são vizinhos de cores que já querem dizer outra coisa — o verde
+     de "Em dia" e o azul da marca —, então nenhum dos dois é o MESMO valor:
+     o verde da categoria é mais claro que --color-success, e o azul é mais vivo
+     que --color-primary. Categoria não é estado nem ação; o que separa as três
+     coisas na tela é o tom, além do lugar em que cada uma aparece.
+
+     Para acrescentar uma categoria nova, basta um par de variáveis aqui e uma
+     linha em js/components/badges.js — nenhum CSS novo. */
+  --color-kids: #15803d;
+  --color-kids-soft: #dcfce7;
+  --color-adulto: #1d4ed8;
+  --color-adulto-soft: #dbeafe;
+
+  /* ---------- Cores: dias da semana ----------
+     Sete matizes no mesmo nível de saturação, para o olho ler a semana como uma
+     escala e não como sete avisos.
+
+     O tom FORTE (--color-day-N) é sempre tinta sobre fundo claro: texto do chip,
+     barra do card, ponto do filtro. O tom SUAVE (--color-day-N-soft) é fundo, e
+     no card da turma ele ainda é diluído em branco (ver .class-card, em
+     components.css) — a cor identifica o dia, mas quem tem que se destacar no
+     card continua sendo o conteúdo. */
+  --color-day-0: #9f1239; /* domingo */
+  --color-day-1: #1d4ed8; /* segunda */
+  --color-day-2: #0e7490; /* terça   */
+  --color-day-3: #15803d; /* quarta  */
+  --color-day-4: #a16207; /* quinta  */
+  --color-day-5: #c2410c; /* sexta   */
+  --color-day-6: #7e22ce; /* sábado  */
+
+  --color-day-0-soft: #ffe4e9;
+  --color-day-1-soft: #e0e9fd;
+  --color-day-2-soft: #dcf0f5;
+  --color-day-3-soft: #dcf5e5;
+  --color-day-4-soft: #fbf0d8;
+  --color-day-5-soft: #ffe9dd;
+  --color-day-6-soft: #f3e8fd;
+
+  /* ---------- Faixa de cor de um card ----------
+     Espessura da barra colorida que identifica um assunto: o dia da semana no
+     card da turma, a cor do indicador no card da dashboard. Um valor só, para
+     as duas coisas serem lidas como a mesma linguagem. */
+  --card-accent-width: 3px;
+  --card-stripe-height: 4px;
+
+  /* Quanto do tom suave sobra depois de diluído em branco. Baixo de propósito:
+     é o que mantém o texto preto sobre o fundo colorido em contraste de leitura
+     confortável em todas as sete cores. */
+  --tint-strength: 45%;
 
   /* ---------- Tipografia ----------
      Inter, hospedada em assets/fonts (ver base.css). A pilha do sistema fica

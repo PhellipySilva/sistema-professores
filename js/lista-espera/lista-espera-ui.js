@@ -3,12 +3,12 @@
 
 import { el } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
-import { selectField, showFieldErrors, textField, textareaField } from '../components/form.js';
+import { checkboxList, readCheckedValues, showFieldErrors, textField, textareaField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
 import { formatCategory, formatPhone, normalizePhone, pluralize, whatsappLink } from '../utils/formatters.js';
 import { formatDateShortBR, timestampToLocalISODate } from '../utils/dates.js';
 import { validateName, validateContactPhone, validateRequired } from '../utils/validators.js';
-import { scheduleSummary } from '../turmas/turmas-ui.js';
+import { scheduleShort, scheduleSummary } from '../turmas/turmas-ui.js';
 
 /* ============================================================
    Selos
@@ -48,6 +48,49 @@ export function notificationBadge(status) {
 }
 
 /* ============================================================
+   Horários de interesse
+   ============================================================ */
+
+/**
+ * Os horários que interessam a uma pessoa, como selos: `Seg/Qua 18h`
+ * `Ter/Qui 19h` `Sáb 09h`.
+ *
+ * Cada selo leva a cor do PRIMEIRO dia daquela turma — a mesma paleta dos chips
+ * de dia do card da turma. É o que faz a linha "João Silva" contar, sem texto
+ * nenhum, que ele aceita três horários diferentes.
+ *
+ * @param {object}  entry
+ * @param {string}  [options.highlightClassId]  a turma do grupo em que a linha
+ *                                              está sendo exibida
+ */
+export function interestBadges(entry, { highlightClassId } = {}) {
+  const interests = entry.interests ?? [];
+
+  if (interests.length === 0) {
+    // Sem turma marcada, o que existe é o texto livre — e ele é a informação.
+    return el('div', { class: 'day-badges' }, [
+      el('span', { class: 'badge badge--neutral', text: entry.desired_slot }),
+    ]);
+  }
+
+  return el('div', { class: 'day-badges' }, interests.map((interest) => {
+    const day = interest.class_schedules?.[0]?.day_of_week;
+    const label = scheduleShort(interest.class_schedules) || interest.name;
+    const isCurrent = highlightClassId && interest.class_id === highlightClassId;
+
+    return el('span', {
+      class: [
+        'badge badge--day',
+        day === undefined ? 'badge--neutral' : `day-${day}`,
+        isCurrent ? 'badge--current' : '',
+      ].filter(Boolean).join(' '),
+      text: label,
+      title: `${interest.name} · ${scheduleSummary(interest.class_schedules ?? [])}`,
+    });
+  }));
+}
+
+/* ============================================================
    Aviso de vaga
    ============================================================ */
 
@@ -58,20 +101,19 @@ export function notificationBadge(status) {
  * da fila no momento de exibir. Assim quem entrou na lista depois do aviso
  * aparece nele, e quem já foi matriculado some — sem nada para sincronizar.
  *
- * O card não matricula ninguém sozinho. Ele mostra quem é a primeira opção e
- * oferece os caminhos: falar no WhatsApp, marcar como resolvida, ou abrir o
- * cadastro do aluno já preenchido.
+ * O card não matricula ninguém sozinho. Ele mostra a fila daquela turma em
+ * ordem de chegada, com o telefone e o WhatsApp de cada um à mão, e oferece os
+ * caminhos: falar, matricular ou marcar o aviso como resolvido.
  *
  * @param {object}   options.notification  com `classes` embutido
  * @param {object[]} options.people        fila atual daquela turma, em ordem
  */
 export function vacancyCard({ notification, people, onResolve, onEnroll }) {
   const className = notification.classes?.name ?? 'Turma';
-  const first = people[0];
 
   const header = el('div', { class: 'card__header' }, [
-    el('div', {}, [
-      el('h3', { class: 'card__title', text: `Nova vaga · ${className}` }),
+    el('div', { class: 'stack-tight' }, [
+      el('h3', { class: 'card__title', text: `Vaga aberta · ${className}` }),
       el('p', {
         class: 'card__meta',
         text: [
@@ -83,49 +125,53 @@ export function vacancyCard({ notification, people, onResolve, onEnroll }) {
     notificationBadge(notification.status),
   ]);
 
-  const body = first
-    ? el('div', { class: 'info-list' }, [
-        el('div', { class: 'info-row' }, [
-          el('span', { class: 'info-row__label', text: 'Primeira da fila' }),
-          el('span', { class: 'info-row__value', text: first.name }),
-        ]),
-        el('div', { class: 'info-row' }, [
-          el('span', { class: 'info-row__label', text: 'Telefone' }),
-          el('span', { class: 'info-row__value', text: formatPhone(first.phone) }),
-        ]),
-        people.length > 1
-          ? el('p', {
-              class: 'card__meta',
-              text: `Mais ${pluralize('pessoa aguardando', 'pessoas aguardando', people.length - 1)} nesta turma.`,
-            })
-          : null,
-      ])
-    : el('p', {
+  const body = people.length === 0
+    ? el('p', {
         class: 'text-muted text-sm',
         text: 'Ninguém na fila desta turma agora — a vaga pode ser oferecida a qualquer aluno.',
-      });
+      })
+    : el('div', { class: 'vacancy-people' }, people.slice(0, 5).map((person, index) =>
+        el('div', { class: 'list-item' }, [
+          el('div', { class: 'stack-tight' }, [
+            el('p', { class: 'list-item__title', text: `${index + 1}º · ${person.name}` }),
+            el('p', { class: 'list-item__meta', text: formatPhone(person.phone) }),
+            // Quem espera por mais de um horário aparece com todos eles: ajuda a
+            // decidir a quem oferecer a vaga primeiro.
+            (person.interests ?? []).length > 1
+              ? interestBadges(person, { highlightClassId: notification.class_id })
+              : null,
+          ]),
+          el('div', { class: 'row' }, [
+            el('a', {
+              class: 'btn btn--secondary btn--sm',
+              href: whatsappLink(person.phone),
+              target: '_blank',
+              rel: 'noopener',
+              html: `${icon('message', 16)}<span class="btn__label">WhatsApp</span>`,
+              'aria-label': `Falar com ${person.name} no WhatsApp`,
+            }),
+            el('button', {
+              type: 'button',
+              class: 'btn btn--primary btn--sm',
+              text: 'Matricular',
+              onclick: () => onEnroll(person, notification),
+            }),
+          ]),
+        ]),
+      ));
 
-  const actions = [];
+  const footer = [];
 
-  if (first) {
-    actions.push(
-      el('a', {
-        class: 'btn btn--secondary btn--sm',
-        href: whatsappLink(first.phone),
-        target: '_blank',
-        rel: 'noopener',
-        html: `${icon('message', 16)}<span>WhatsApp</span>`,
-      }),
-      el('button', {
-        type: 'button',
-        class: 'btn btn--primary btn--sm',
-        text: 'Adicionar à turma',
-        onclick: () => onEnroll(first, notification),
+  if (people.length > 5) {
+    footer.push(
+      el('p', {
+        class: 'card__meta',
+        text: `Mais ${pluralize('pessoa aguardando', 'pessoas aguardando', people.length - 5)} nesta turma.`,
       }),
     );
   }
 
-  actions.push(
+  footer.push(
     el('button', {
       type: 'button',
       class: 'btn btn--ghost btn--sm',
@@ -137,7 +183,7 @@ export function vacancyCard({ notification, people, onResolve, onEnroll }) {
   return el('article', { class: 'card card--alert' }, [
     header,
     body,
-    el('div', { class: 'card__footer' }, actions),
+    el('div', { class: 'card__footer' }, footer),
   ]);
 }
 
@@ -149,15 +195,19 @@ export function vacancyCard({ notification, people, onResolve, onEnroll }) {
  * Um grupo da fila: o horário desejado no cabeçalho e as pessoas numeradas
  * pela ordem de chegada.
  *
- * @param {object} group  { label, slot, classId, people } — de groupWaitlistByClass
+ * @param {object} group  { label, slot, classId, schedules, people } — de groupWaitlistByClass
  */
 export function waitlistGroup(group, { onContact, onEnroll, onEdit, onRemove }) {
   const waitingCount = group.people.filter((person) => person.status === 'waiting').length;
+  const subtitle = group.classId ? scheduleSummary(group.schedules ?? []) : group.slot;
 
   const header = el('div', { class: 'row-between section__header' }, [
     el('div', {}, [
       el('h2', { class: 'section__title', text: `Lista de espera — ${group.label}` }),
-      el('p', { class: 'text-muted text-sm', text: `${group.slot} · ${pluralize('pessoa aguardando', 'pessoas aguardando', waitingCount)}` }),
+      el('p', {
+        class: 'text-muted text-sm',
+        text: `${subtitle} · ${pluralize('pessoa aguardando', 'pessoas aguardando', waitingCount)}`,
+      }),
     ]),
     group.classId
       ? el('a', {
@@ -207,7 +257,7 @@ export function waitlistGroup(group, { onContact, onEnroll, onEdit, onRemove }) 
           type: 'button',
           class: 'btn btn--ghost btn--sm',
           text: 'Matricular',
-          onclick: () => onEnroll(person),
+          onclick: () => onEnroll(person, group.classId),
         }),
       );
     }
@@ -232,9 +282,12 @@ export function waitlistGroup(group, { onContact, onEnroll, onEdit, onRemove }) 
     );
 
     return el('div', { class: 'list-item' }, [
-      el('div', {}, [
+      el('div', { class: 'stack-tight' }, [
         el('p', { class: 'list-item__title', text: `${person.position}º · ${person.name}` }),
         el('p', { class: 'list-item__meta', text: meta.join(' · ') }),
+        // O selo do horário deste grupo vem destacado; os outros mostram que a
+        // pessoa também aceita outras turmas.
+        interestBadges(person, { highlightClassId: group.classId }),
         person.notes ? el('p', { class: 'list-item__meta', text: person.notes }) : null,
       ]),
       el('div', { class: 'row' }, [waitlistBadge(person.status), el('div', { class: 'row' }, actions)]),
@@ -253,38 +306,49 @@ export function waitlistGroup(group, { onContact, onEnroll, onEdit, onRemove }) 
 
 /**
  * @param {object|null} options.entry    null = nova pessoa
- * @param {object[]}    options.classes  turmas, para o select de horário desejado
+ * @param {object[]}    options.classes  turmas, para as caixas de horário
  * @param {string}      [options.defaultClassId]
- * @param {Function}    options.onSave   async ({ name, phone, class_id, desired_slot, notes })
+ * @param {Function}    options.onSave   async ({ name, phone, class_ids, desired_slot, notes })
+ *
+ * VÁRIAS TURMAS, NÃO UMA
+ *
+ *   O campo é uma lista de caixas de seleção: a mesma pessoa marca quantos
+ *   horários aceitar, e continua podendo marcar um só — ou nenhum, descrevendo
+ *   o que quer no campo de texto abaixo. Duplicar a mesma turma é impossível:
+ *   uma caixa marcada duas vezes não existe, e o banco tem a constraint
+ *   `waitlist_entry_classes_unique` como garantia final.
  */
 export function openWaitlistModal({ entry, classes, defaultClassId, onSave }) {
   const isEdit = Boolean(entry);
-  const initialClassId = entry?.class_id ?? defaultClassId ?? '';
 
-  const classField = selectField({
-    name: 'class_id',
-    label: 'Turma desejada',
-    placeholder: 'Outro horário',
+  const initialIds = entry
+    ? entry.class_ids ?? []
+    : (defaultClassId ? [defaultClassId] : []);
+
+  const classField = checkboxList({
+    name: 'class_ids',
+    label: 'Turmas / horários de interesse',
     options: classes.map((turma) => ({
       value: turma.id,
-      label: `${turma.name} · ${formatCategory(turma.category)}`,
+      label: turma.name,
+      meta: `${formatCategory(turma.category)} · ${scheduleSummary(turma.class_schedules ?? [])}`,
     })),
-    value: initialClassId,
-    hint: 'Vincular à turma é o que permite avisar esta pessoa quando abrir uma vaga nela.',
+    values: initialIds,
+    hint: 'Marque todos os horários que servem. É o que permite avisar esta pessoa quando abrir vaga em qualquer um deles.',
+    emptyMessage: 'Nenhuma turma cadastrada ainda. Descreva o horário desejado no campo abaixo.',
   });
 
   const slotField = textField({
     name: 'desired_slot',
-    label: 'Horário desejado',
-    value: entry?.desired_slot ?? describeClass(classes, initialClassId),
+    label: 'Horário desejado (texto)',
+    value: entry?.desired_slot ?? describeClasses(classes, initialIds),
     placeholder: 'Ex.: Terça e Quinta — 18h',
     required: true,
-    hint: 'Preenchido a partir da turma escolhida. Continua legível mesmo se a turma mudar depois.',
+    hint: 'Preenchido a partir das turmas marcadas. Continua legível mesmo se uma turma for excluída depois.',
   });
 
-  /* O texto do horário acompanha a turma escolhida — mas só enquanto o
-     professor não escrever o dele. Uma vez editado à mão, o campo é dele. */
-  const classSelect = classField.querySelector('select');
+  /* O texto acompanha as turmas marcadas — mas só enquanto o professor não
+     escrever o dele. Uma vez editado à mão, o campo é dele. */
   const slotInput = slotField.querySelector('input');
   let slotTouched = isEdit;
 
@@ -292,9 +356,9 @@ export function openWaitlistModal({ entry, classes, defaultClassId, onSave }) {
     slotTouched = true;
   });
 
-  classSelect.addEventListener('change', () => {
+  classField.addEventListener('change', () => {
     if (slotTouched && slotInput.value.trim() !== '') return;
-    slotInput.value = describeClass(classes, classSelect.value);
+    slotInput.value = describeClasses(classes, readCheckedValues(classField, 'class_ids'));
   });
 
   const fields = [
@@ -336,7 +400,7 @@ export function openWaitlistModal({ entry, classes, defaultClassId, onSave }) {
 
       const name = get('name');
       const phone = get('phone');
-      const classId = get('class_id');
+      const classIds = readCheckedValues(form, 'class_ids');
       const desiredSlot = get('desired_slot');
       const notes = get('notes');
 
@@ -351,7 +415,7 @@ export function openWaitlistModal({ entry, classes, defaultClassId, onSave }) {
       await onSave({
         name,
         phone: normalizePhone(phone),
-        class_id: classId || null,
+        class_ids: classIds,
         desired_slot: desiredSlot,
         notes: notes || null,
       });
@@ -359,10 +423,18 @@ export function openWaitlistModal({ entry, classes, defaultClassId, onSave }) {
   });
 }
 
-/** 'Kids Iniciante · Segunda e Quarta · 17:00 · 60 min' */
-function describeClass(classes, classId) {
-  const turma = classes.find((candidate) => candidate.id === classId);
-  if (!turma) return '';
+/** 'Kids Iniciante (Seg/Qua 17h) · Adulto Noite (Ter/Qui 19h)' */
+function describeClasses(classes, classIds) {
+  const chosen = (classIds ?? [])
+    .map((id) => classes.find((candidate) => candidate.id === id))
+    .filter(Boolean);
 
-  return `${turma.name} · ${scheduleSummary(turma.class_schedules ?? [])}`;
+  if (chosen.length === 0) return '';
+
+  return chosen
+    .map((turma) => {
+      const short = scheduleShort(turma.class_schedules ?? []);
+      return short ? `${turma.name} (${short})` : turma.name;
+    })
+    .join(' · ');
 }

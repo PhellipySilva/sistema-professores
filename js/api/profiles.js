@@ -8,6 +8,7 @@
  */
 
 import { supabase } from '../supabase.js';
+import { cachedRead, cacheKey } from '../offline/cache.js';
 
 /**
  * Perfil do usuário logado, ou null se a linha ainda não existir.
@@ -17,15 +18,21 @@ import { supabase } from '../supabase.js';
  * professor de trabalhar. Quem chama fica com o nome de reserva.
  */
 export async function getProfile(userId) {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, name, email')
-    .eq('id', userId)
-    .maybeSingle();
+  try {
+    return await cachedRead(cacheKey(userId, 'profile'), async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, email')
+        .eq('id', userId)
+        .maybeSingle();
 
-  if (error) {
+      if (error) throw error;
+      return data;
+    });
+  } catch (error) {
+    // Inclui o caso "offline e sem cópia local": o cabeçalho fica com o nome de
+    // reserva, e nada mais na tela depende disto.
     console.error('[profiles] não foi possível ler o perfil', error);
     return null;
   }
-  return data;
 }

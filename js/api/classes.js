@@ -1,6 +1,7 @@
 /* Acesso a dados: turmas, horários e matrículas. */
 
 import { supabase } from '../supabase.js';
+import { cachedRead, cacheKey } from '../offline/cache.js';
 
 const CLASS_COLUMNS = 'id, name, category, capacity, created_at';
 const SCHEDULE_COLUMNS = 'id, class_id, day_of_week, start_time, end_time';
@@ -11,31 +12,35 @@ const SCHEDULE_COLUMNS = 'id, class_id, day_of_week, start_time, end_time';
 
 /** Turmas com seus horários e a contagem de alunos ativos, em uma query. */
 export async function listClasses(userId) {
-  const { data, error } = await supabase
-    .from('classes')
-    .select(`${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS}), class_students (id, active)`)
-    .eq('user_id', userId)
-    .order('name');
+  return cachedRead(cacheKey(userId, 'classes'), async () => {
+    const { data, error } = await supabase
+      .from('classes')
+      .select(`${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS}), class_students (id, active)`)
+      .eq('user_id', userId)
+      .order('name');
 
-  if (error) throw error;
+    if (error) throw error;
 
-  return data.map((row) => ({
-    ...row,
-    class_schedules: sortSchedules(row.class_schedules ?? []),
-    student_count: (row.class_students ?? []).filter((link) => link.active).length,
-  }));
+    return data.map((row) => ({
+      ...row,
+      class_schedules: sortSchedules(row.class_schedules ?? []),
+      student_count: (row.class_students ?? []).filter((link) => link.active).length,
+    }));
+  });
 }
 
 export async function getClass(userId, classId) {
-  const { data, error } = await supabase
-    .from('classes')
-    .select(`${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS})`)
-    .eq('user_id', userId)
-    .eq('id', classId)
-    .single();
+  return cachedRead(cacheKey(userId, 'class', classId), async () => {
+    const { data, error } = await supabase
+      .from('classes')
+      .select(`${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS})`)
+      .eq('user_id', userId)
+      .eq('id', classId)
+      .single();
 
-  if (error) throw error;
-  return { ...data, class_schedules: sortSchedules(data.class_schedules ?? []) };
+    if (error) throw error;
+    return { ...data, class_schedules: sortSchedules(data.class_schedules ?? []) };
+  });
 }
 
 /**
@@ -51,12 +56,32 @@ export async function createClass(userId, { name, category, capacity, schedules,
 
   if (error) throw error;
 
-  if (schedules?.length > 0) {
-    await replaceSchedules(userId, created.id, schedules);
+  /* Criar turma são três escritas em tabelas diferentes, e o PostgREST não tem
+     transação entre chamadas. Sem o desfazer abaixo, uma falha na grade ou na
+     matrícula deixava a linha de `classes` gravada enquanto a tela dizia "não
+     foi possível criar a turma" — e o professor voltava a criar a mesma turma,
+     acumulando turmas fantasma sem grade e sem aluno.
+
+     Apagar aqui é seguro: a turma nasceu segundos atrás, nada aponta para ela
+     ainda, e o cascade leva junto a grade e as matrículas parciais. O erro
+     original é relançado; a falha do desfazer não pode substituí-lo, senão a
+     causa de verdade se perde. */
+  try {
+    if (schedules?.length > 0) {
+      await replaceSchedules(userId, created.id, schedules);
+    }
+    if (enrollments) {
+      await replaceEnrollments(userId, created.id, enrollments);
+    }
+  } catch (stepError) {
+    try {
+      await deleteClass(userId, created.id);
+    } catch (rollbackError) {
+      console.error('[classes] turma criada pela metade e não foi possível desfazer', rollbackError);
+    }
+    throw stepError;
   }
-  if (enrollments) {
-    await replaceEnrollments(userId, created.id, enrollments);
-  }
+
   return created;
 }
 
@@ -167,13 +192,15 @@ export async function replaceSchedules(userId, classId, schedules) {
 
 /** Todos os horários do professor — a agenda usa isto para calcular o mês. */
 export async function listAllSchedules(userId) {
-  const { data, error } = await supabase
-    .from('class_schedules')
-    .select(`${SCHEDULE_COLUMNS}, classes (id, name, category)`)
-    .eq('user_id', userId);
+  return cachedRead(cacheKey(userId, 'schedules'), async () => {
+    const { data, error } = await supabase
+      .from('class_schedules')
+      .select(`${SCHEDULE_COLUMNS}, classes (id, name, category)`)
+      .eq('user_id', userId);
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 /* ============================================================
@@ -181,38 +208,42 @@ export async function listAllSchedules(userId) {
    ============================================================ */
 
 export async function listClassStudents(userId, classId) {
-  const { data, error } = await supabase
-    .from('class_students')
-    .select('id, active, student_id, days_of_week, students (id, name, category, phone, guardian_name)')
-    .eq('user_id', userId)
-    .eq('class_id', classId)
-    .eq('active', true);
+  return cachedRead(cacheKey(userId, 'class-students', classId), async () => {
+    const { data, error } = await supabase
+      .from('class_students')
+      .select('id, active, student_id, days_of_week, students (id, name, category, phone, guardian_name)')
+      .eq('user_id', userId)
+      .eq('class_id', classId)
+      .eq('active', true);
 
-  if (error) throw error;
+    if (error) throw error;
 
-  return data
-    .filter((link) => link.students)
-    .map((link) => ({ linkId: link.id, days_of_week: link.days_of_week, ...link.students }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    return data
+      .filter((link) => link.students)
+      .map((link) => ({ linkId: link.id, days_of_week: link.days_of_week, ...link.students }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  });
 }
 
 /** Turmas em que um aluno está matriculado (perfil do aluno). */
 export async function listClassesOfStudent(userId, studentId) {
-  const { data, error } = await supabase
-    .from('class_students')
-    .select(`id, classes (${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS}))`)
-    .eq('user_id', userId)
-    .eq('student_id', studentId)
-    .eq('active', true);
+  return cachedRead(cacheKey(userId, 'student-classes', studentId), async () => {
+    const { data, error } = await supabase
+      .from('class_students')
+      .select(`id, classes (${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS}))`)
+      .eq('user_id', userId)
+      .eq('student_id', studentId)
+      .eq('active', true);
 
-  if (error) throw error;
+    if (error) throw error;
 
-  return data
-    .filter((link) => link.classes)
-    .map((link) => ({
-      ...link.classes,
-      class_schedules: sortSchedules(link.classes.class_schedules ?? []),
-    }));
+    return data
+      .filter((link) => link.classes)
+      .map((link) => ({
+        ...link.classes,
+        class_schedules: sortSchedules(link.classes.class_schedules ?? []),
+      }));
+  });
 }
 
 /**

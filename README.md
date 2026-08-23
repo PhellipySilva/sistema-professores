@@ -1,7 +1,7 @@
-# Sistema de Gestão de Aulas de Beach Tennis
+# MatchPhoint
 
-MVP de uma plataforma web para gerenciar alunos, turmas, frequência, reposições, mensalidades e
-planejamentos de aulas de Beach Tennis.
+Plataforma web para o professor de Beach Tennis gerenciar alunos, turmas, frequência, reposições,
+mensalidades e planejamentos de aula.
 
 Construído em **HTML, CSS e JavaScript puro** com **Supabase** como backend. Sem React, sem
 Tailwind, sem framework de interface — por decisão de projeto, para que o código continue legível
@@ -86,6 +86,8 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 4 | `0004_due_day_31.sql` | Permite dia de vencimento de 1 a 31 |
 | 5 | `0005_enrollment_days.sql` | Aluno matriculado em dias específicos da turma |
 | 6 | `0006_patrocinados_lista_espera.sql` | Atleta patrocinado, vagas da turma, lista de espera e avisos |
+| 7 | `0007_lista_espera_multiplas_turmas.sql` | Uma pessoa da fila passa a poder querer **várias** turmas |
+| 8 | `0008_planejamento_turma.sql` | Planejamento com turma ou geral (`class_id` opcional) |
 
 Para conferir que deu certo, rode:
 
@@ -96,14 +98,19 @@ where schemaname = 'public'
 order by tablename;
 ```
 
-Devem aparecer **12 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
+Devem aparecer **13 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
 foi aplicado e os dados estariam expostos — não siga adiante.
+
+> **A migration 0007 remove a coluna `waitlist_entries.class_id`** — depois de copiar o que havia
+> nela para a tabela nova `waitlist_entry_classes`. Nenhum dado se perde, mas o site publicado
+> precisa estar atualizado junto: a versão antiga do código grava naquela coluna. Rode o SQL e
+> publique o build na mesma janela.
 
 > **Rode cada arquivo uma única vez.** O SQL Editor executa tudo numa transação: se um comando
 > falhar (por exemplo `relation "profiles" already exists`, sinal de que o script foi colado duas
 > vezes), a transação inteira é desfeita e o banco volta ao que era antes.
 >
-> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 12 tabelas e as funções, é
+> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 13 tabelas e as funções, é
 > seguro em qualquer estado, e depois dele os três arquivos rodam limpos. **É destrutivo:** apaga
 > os dados junto (não mexe nos usuários).
 
@@ -155,14 +162,15 @@ imprimem o resultado. Não entram no build de produção.
 
 | Página | O que cobre |
 |---|---|
-| `/tests/` | Datas e fusos, ocorrências de aula, matrícula por dia, status financeiro, vagas, dinheiro (145 casos) |
-| `/tests/render.html` | Todos os componentes de interface montados com dados falsos (100 casos) |
+| `/tests/` | Datas e fusos, ocorrências de aula, matrícula por dia, status financeiro, vagas, fila de espera, conflito de sincronização, dinheiro (166 casos) |
+| `/tests/render.html` | Todos os componentes de interface montados com dados falsos (151 casos) |
 | `/tests/preview.html` | Vitrine visual: sidebar, topbar, perfil, cards, campos, calendário e chamada, sem banco nem sessão |
 | `/tests/preview-mobile.html` | A vitrine dentro de iframes de 390 e 320 px, medindo se sobra scroll horizontal |
 
 Rode antes de mexer em `utils/dates.js`, `agenda/ocorrencias.js`,
-`turmas/matriculas.js` ou `financeiro/financeiro.js` — são as quatro peças onde
-um erro passa despercebido e corrompe dado de verdade.
+`turmas/matriculas.js`, `financeiro/financeiro.js`, `lista-espera/vagas.js` ou
+`offline/conflitos.js` — são as peças onde um erro passa despercebido e corrompe
+dado de verdade.
 
 > `npm run build` **falha de propósito** se `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY`
 > estiverem faltando. Sem elas, o Rollup consegue provar que o `createClient` nunca é alcançado,
@@ -212,27 +220,82 @@ um erro passa despercebido e corrompe dado de verdade.
 │   ├── api/                 TODA query Supabase mora aqui (Fase 2+)
 │   ├── components/          layout, modal, toast, confirm, empty-state, loading, icons
 │   ├── dashboard/ alunos/ turmas/ agenda/ financeiro/ reposicoes/ planejamentos/
-│   ├── lista-espera/          fila por turma, regra da vaga e avisos
+│   ├── lista-espera/        fila por turma, regra da vaga e avisos
+│   ├── offline/             cache local, fila de pendências e sincronização
 │   └── utils/               dates, formatters, validators, dom
+│
+├── public/                  copiado tal e qual para a raiz do site
+│   ├── sw.js                Service Worker (faz o sistema ABRIR sem internet)
+│   ├── manifest.webmanifest instalável como aplicativo
+│   └── icons/
 │
 ├── tests/                   suítes e vitrine visual — fora do build
 ├── supabase/migrations/     SQL versionado
 ├── docs/ARQUITETURA.md      decisões de arquitetura e o porquê de cada uma
 └── assets/
-    ├── icons/               favicon
+    ├── brand/               logo e monograma, gerados de img/logotipo-sistema.png
     └── fonts/               Inter (variável, subconjunto latino)
 ```
 
 ## Identidade visual
 
-Azul `#0736C2` + preto + branco + neutros frios. O azul é **cor de destaque**,
+**MatchPhoint.** Azul `#0736C2` + preto + branco + neutros frios.
+
+### Logo
+
+O arquivo original é `img/logotipo-sistema.png` (1774x887, 755 kB). Ele **não** é usado direto:
+`scripts/gerar-logo.mjs` apara a margem branca e reduz a resolução, produzindo o que a interface
+carrega de verdade.
+
+```
+node scripts/gerar-logo.mjs
+```
+
+| Arquivo | Uso |
+|---|---|
+| `assets/brand/matchphoint.png` (440x214, 59 kB) | menu, topo, login, tela de carregamento |
+| `assets/brand/matchphoint-mark.png` (256², 30 kB) | favicon |
+
+Rode o script só quando a logo mudar — o resultado é versionado, e o build não depende dele. Ele
+é Node puro (o `node:zlib` decodifica e recodifica o PNG), sem dependência e sem navegador.
+
+**A logo é PNG sem canal alfa**: o fundo dela é branco de verdade. Sobre o topo branco e o cartão
+de login isso passa despercebido; sobre a sidebar escura viraria um retângulo branco no meio do
+menu. Por isso ela ganha lá a `.brand-plate` — uma plaquinha branca de cantos arredondados, que
+transforma o retângulo em decisão de design em vez de acidente.
+
+### Cor de categoria e de dia O azul é **cor de destaque**,
 não cor de fundo: ele aparece na ação principal, no item de menu selecionado, no
 campo em foco e no número que resume o mês. O resto da tela é branco sobre cinza
 claríssimo, e o contraste vem do preto.
 
+Kids é **verde** e Adulto é **azul** — e a cor identifica o **card inteiro do aluno**, não só um
+selo: fundo tingido, borda na cor e o selo da categoria ao lado do nome. O selo da direita continua
+sendo o da situação financeira, inclusive o roxo de "Patrocinado", que aparece em qualquer
+categoria. Cada dia da semana também tem a sua cor.
+
+Os dois tons são vizinhos de cores que já querem dizer outra coisa (o verde de "Em dia", o azul da
+marca), então nenhum deles é o mesmo valor: o verde da categoria é mais claro que
+`--color-success` e o azul é mais vivo que `--color-primary`. O que separa as três coisas é o tom
+e o lugar — categoria pinta o card, estado fica no selo, ação continua sendo só do azul da marca.
+
+A cor do dia identifica o **card inteiro da turma**: uma barra no topo com um segmento por dia, o
+cabeçalho tingido e o ícone da ocupação. O tom usado no fundo é o suave do dia diluído em branco
+(`--tint-strength`), então o preto do nome da turma continua sendo o que se lê primeiro — a cor
+identifica, não disputa. Turma de vários dias fica com uma barra segmentada em vez de um card
+bicolor, e os selos logo abaixo dizem quais dias são.
+
+Na dashboard cada indicador tem cor de assunto (alunos azul, turmas verde, aulas de hoje roxo,
+atraso vermelho), repetida no atalho que leva ao mesmo lugar. O vermelho é **exclusivo de alerta**:
+o cartão de atrasados só ganha cor quando existe atraso.
+
+Uma categoria nova entra em dois lugares e em nenhum outro: um par de variáveis
+(`--color-<nome>` / `--color-<nome>-soft`) e uma linha em `js/components/badges.js`.
+
 | Peça | Onde mexer |
 |---|---|
 | Paleta, tipografia, raios, sombras, espaçamento | `css/variables.css` — **nenhum valor de cor fora daqui** |
+| Selos de categoria e de dia | `js/components/badges.js` |
 | Fonte | `css/base.css` (`@font-face`) + `assets/fonts/` |
 | Sidebar escura, drawer, topbar, perfil | `css/layout.css` + `js/components/layout.js` |
 | Cards, botões, campos, badges, modal | `css/components.css` |
@@ -261,6 +324,7 @@ para uma tela em português. A pilha do sistema fica como reserva.
 | Domínio | `js/<modulo>/<modulo>.js` | regras de negócio e orquestração |
 | UI | `js/<modulo>/*-ui.js`, `js/components/` | gerar HTML e tratar eventos |
 | Utils | `js/utils/*.js` | datas, moeda, validação |
+| Offline | `js/offline/*.js` | cópia local, fila de pendências e sincronização |
 
 A regra que mantém isso honesto, verificável com um `grep`:
 
@@ -288,6 +352,36 @@ A regra que mantém isso honesto, verificável com um `grep`:
   lista de espera por turma e aviso de vaga
 - [x] **Fase 13** — Nova identidade visual: azul `#0736C2`, sidebar escura, drawer no celular,
   perfil no topo com o nome do professor e tipografia Inter
+- [x] **Fase 14** — Marca MatchPhoint (logo e nome em todo o sistema), cor por categoria e por dia
+  da semana, nível no perfil do aluno e filtro de turmas por dia
+- [x] **Fase 15** — Lista de espera com vários horários por pessoa, planejamento com ou sem turma,
+  funcionamento offline (Service Worker + IndexedDB) e a identidade de cor por dia no card da turma
+
+## Funcionamento offline
+
+O professor consegue **consultar** o sistema e **fazer a chamada** sem internet.
+
+**O que fica disponível:** alunos, turmas, lista de espera, agenda, planejamentos, financeiro,
+frequência e perfil — tudo o que já tiver sido carregado uma vez com conexão. Cada consulta guarda
+uma cópia no IndexedDB, com a chave do professor; o logout apaga essa cópia (o aparelho pode ser
+compartilhado).
+
+**O que pode ser feito offline:** marcar presença, falta e reposição. Só isso, e por um motivo: a
+frequência é um `upsert` por (aula, aluno) — não cria identificador, não depende de nada que ainda
+não exista e pode ser reenviada sem duplicar. Cadastrar aluno, criar turma ou registrar pagamento
+ficam de fora porque geram identificadores e disparam consequências que o servidor precisa validar
+na hora; enfileirá-los criaria alunos duplicados e contas erradas.
+
+**Quando a conexão volta:** a fila sobe sozinha e um aviso diz quantas alterações foram enviadas.
+Se a mesma linha tiver mudado no servidor no meio do caminho, **nada é sobrescrito**: o sistema
+mostra as duas versões e o professor escolhe qual vale.
+
+**O indicador**, no topo, ao lado do perfil: `● Online` · `● Offline` · `↻ Sincronizando...` ·
+`✓ Sincronizado`. No celular sobra só o ponto colorido.
+
+> O Service Worker (`public/sw.js`) é o que faz a página **abrir** sem rede — sem ele o navegador
+> nem executaria JavaScript, e o banco local ficaria inalcançável. Ele usa *rede primeiro, cache
+> como reserva*: publicação nova nunca fica presa em cache.
 
 ### Fora deste MVP
 

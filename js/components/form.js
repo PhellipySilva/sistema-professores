@@ -198,3 +198,73 @@ export function showFieldErrors(form, errors) {
   firstInvalid?.focus();
   return Boolean(firstInvalid);
 }
+
+/**
+ * Lista de caixas de seleção com rótulo e uma linha de apoio — para escolher
+ * VÁRIOS itens de um cadastro (as turmas de interesse da lista de espera).
+ *
+ * Não é `checkboxChips`: chip serve para rótulo curto ("Seg", "Qua") e quebra
+ * feio com "Adulto Noite · Terça e Quinta · 19:00". Aqui cada opção ocupa uma
+ * linha, com nome em cima e horário embaixo, e a lista rola dentro da própria
+ * caixa quando o professor tem muitas turmas.
+ *
+ * Reaproveita as classes `.picker__*` do seletor de alunos: é o mesmo desenho
+ * resolvendo o mesmo problema, então não ganha CSS novo.
+ *
+ * @param {object}   options
+ * @param {string}   options.name
+ * @param {string}   options.label
+ * @param {{value: string, label: string, meta?: string, extra?: Node}[]} options.options
+ * @param {string[]} [options.values]        já marcados
+ * @param {string}   [options.emptyMessage]  texto quando não há nenhuma opção
+ */
+export function checkboxList({ name, label, options, values = [], hint, emptyMessage }) {
+  const selected = new Set(values.map(String));
+
+  const rows = options.map((option) => {
+    const checked = selected.has(String(option.value));
+
+    const input = el('input', {
+      type: 'checkbox',
+      class: 'picker__checkbox',
+      name,
+      value: option.value,
+      checked: checked ? '' : null,
+    });
+
+    const row = el('label', { class: `picker__row${checked ? ' picker__row--on' : ''}` }, [
+      el('span', { class: 'picker__main' }, [
+        input,
+        el('span', {}, [
+          el('span', { class: 'picker__name', text: option.label }),
+          option.meta ? el('span', { class: 'picker__meta', text: option.meta }) : null,
+        ]),
+      ]),
+      option.extra ?? null,
+    ]);
+
+    // O fundo azul acompanha a caixa marcada — sem ele, numa lista de oito
+    // turmas o professor perde de vista o que já escolheu.
+    input.addEventListener('change', () => {
+      row.classList.toggle('picker__row--on', input.checked);
+    });
+
+    return row;
+  });
+
+  const body = rows.length > 0
+    ? el('div', { class: 'picker__list' }, rows)
+    : el('p', { class: 'field__hint', text: emptyMessage ?? 'Nenhuma opção disponível.' });
+
+  const children = [el('span', { class: 'field__label', text: label }), body];
+
+  if (hint) children.push(el('p', { class: 'field__hint', text: hint }));
+  children.push(el('p', { class: 'field__error hidden', id: `field-${name}-error`, role: 'alert' }));
+
+  return el('div', { class: 'field' }, children);
+}
+
+/** Valores marcados de um grupo de caixas, dentro de qualquer elemento. */
+export function readCheckedValues(scope, name) {
+  return [...scope.querySelectorAll(`input[name="${name}"]:checked`)].map((input) => input.value);
+}

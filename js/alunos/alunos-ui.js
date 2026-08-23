@@ -3,6 +3,7 @@
 
 import { el } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
+import { categoryBadge, categoryVariant } from '../components/badges.js';
 import { checkboxField, selectField, showFieldErrors, textField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
 import { CATEGORIES, centsToInputValue, formatCategory, formatCurrency, formatPhone, normalizePhone, parseCurrencyToCents } from '../utils/formatters.js';
@@ -40,9 +41,19 @@ export function financialBadge(status) {
    Card de aluno na listagem
    ============================================================ */
 
+/**
+ * Card do aluno na listagem.
+ *
+ * A categoria dá a cor do CARD INTEIRO — verde para Kids, azul para Adulto —,
+ * e não só a do selo ao lado do nome. Ver a nota de .student-card em
+ * css/components.css: nenhuma cor é escolhida aqui, só a classe da categoria.
+ *
+ * O selo da direita continua sendo o da situação financeira, inclusive o roxo
+ * de "Patrocinado", que pode aparecer em qualquer categoria.
+ */
 export function studentCard(student, financialStatus, { onEdit, onDelete }) {
-  const meta = [formatCategory(student.category)];
-  if (student.phone) meta.push(formatPhone(student.phone));
+  // A categoria sai do texto e vira selo colorido, ao lado do nome.
+  const meta = student.phone ? [formatPhone(student.phone)] : [];
 
   const details = [
     el('a', {
@@ -50,7 +61,10 @@ export function studentCard(student, financialStatus, { onEdit, onDelete }) {
       href: `/pages/aluno.html?id=${student.id}`,
       text: student.name,
     }),
-    el('p', { class: 'card__meta', text: meta.join(' · ') }),
+    el('div', { class: 'row row--wrap' }, [
+      categoryBadge(student.category),
+      meta.length > 0 ? el('p', { class: 'card__meta', text: meta.join(' · ') }) : null,
+    ]),
   ];
 
   if (student.guardian_name) {
@@ -59,9 +73,11 @@ export function studentCard(student, financialStatus, { onEdit, onDelete }) {
     );
   }
 
-  return el('article', { class: 'card' }, [
+  return el('article', {
+    class: `card student-card student-card--${categoryVariant(student.category)}`,
+  }, [
     el('div', { class: 'card__header' }, [
-      el('div', {}, details),
+      el('div', { class: 'stack-tight' }, details),
       financialBadge(financialStatus),
     ]),
     el('div', { class: 'card__footer' }, [
@@ -397,9 +413,20 @@ export function infoRow(label, value) {
   ]);
 }
 
+/** Mesma linha rótulo/valor, mas com um elemento no lugar do texto. */
+export function infoBadgeRow(label, node) {
+  return el('div', { class: 'info-row' }, [
+    el('span', { class: 'info-row__label', text: label }),
+    node,
+  ]);
+}
+
 export function studentSummaryCard(student, financialStatus) {
   const rows = [
-    infoRow('Categoria', formatCategory(student.category)),
+    // O nível é o mesmo dado que já existia em `students.category` — a mudança
+    // é só de apresentação: selo colorido no lugar de texto, na mesma cor que a
+    // categoria tem no card da turma. Nada novo foi gravado no banco.
+    infoBadgeRow('Nível', categoryBadge(student.category)),
     infoRow('Telefone', student.phone ? formatPhone(student.phone) : ''),
   ];
 
@@ -418,7 +445,11 @@ export function studentSummaryCard(student, financialStatus) {
         ),
   );
 
-  return el('section', { class: 'card' }, [
+  // A mesma cor de categoria da listagem: o aluno que era um card verde na
+  // lista não pode virar um card branco ao ser aberto.
+  return el('section', {
+    class: `card student-card student-card--${categoryVariant(student.category)}`,
+  }, [
     el('div', { class: 'card__header' }, [
       el('h2', { class: 'card__title', text: 'Dados do aluno' }),
       financialBadge(financialStatus),

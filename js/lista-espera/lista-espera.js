@@ -23,9 +23,16 @@ import { showLoading } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, getQueryParam, render } from '../utils/dom.js';
 import { formatDateShortBR, timestampToLocalISODate } from '../utils/dates.js';
-import { formatPhone } from '../utils/formatters.js';
-import { groupWaitlistByClass } from './vagas.js';
-import { notificationBadge, openWaitlistModal, vacancyCard, waitlistGroup } from './lista-espera-ui.js';
+import { formatPhone, whatsappLink } from '../utils/formatters.js';
+import { groupWaitlistByClass, wantsClass } from './vagas.js';
+import {
+  interestBadges,
+  notificationBadge,
+  openWaitlistModal,
+  vacancyCard,
+  waitlistBadge,
+  waitlistGroup,
+} from './lista-espera-ui.js';
 import { openStudentModal } from '../alunos/alunos-ui.js';
 import { createStudentWithEnrollment } from '../alunos/cadastro.js';
 
@@ -126,9 +133,59 @@ function renderPage() {
 
   render(content, [
     notificationsSection(open),
+    peopleSection(queue),
     ...groupSections(queue),
     historySection(entries.filter((entry) => entry.status === 'enrolled' || entry.status === 'removed')),
     resolvedSection(resolved),
+  ]);
+}
+
+/**
+ * A lista por PESSOA, antes das filas por turma.
+ *
+ * As duas visões respondem a perguntas diferentes e por isso convivem: aqui o
+ * professor vê "quem está esperando e por quais horários" — com os selos lado a
+ * lado, uma linha por pessoa, sem ninguém repetido. Nas seções seguintes vê
+ * "quem está na fila desta turma", que é a pergunta do momento em que abre uma
+ * vaga, e ali a mesma pessoa aparece em cada fila de que participa.
+ */
+function peopleSection(queue) {
+  if (queue.length === 0) return null;
+
+  return el('section', { class: 'section' }, [
+    el('h2', {
+      class: 'section__title',
+      text: `Pessoas na lista · ${queue.length}`,
+    }),
+    el('div', { class: 'card card--flush' }, queue.map((person) =>
+      el('div', { class: 'list-item' }, [
+        el('div', { class: 'stack-tight' }, [
+          el('p', { class: 'list-item__title', text: person.name }),
+          el('p', { class: 'list-item__meta', text: formatPhone(person.phone) }),
+          interestBadges(person),
+        ]),
+        el('div', { class: 'row' }, [
+          waitlistBadge(person.status),
+          el('a', {
+            class: 'btn btn--ghost btn--icon',
+            href: whatsappLink(person.phone),
+            target: '_blank',
+            rel: 'noopener',
+            'aria-label': `Falar com ${person.name} no WhatsApp`,
+            title: 'WhatsApp',
+            html: icon('message', 18),
+          }),
+          el('button', {
+            type: 'button',
+            class: 'btn btn--ghost btn--icon',
+            'aria-label': `Editar ${person.name}`,
+            title: 'Editar horários de interesse',
+            html: icon('edit', 18),
+            onclick: () => openEdit(person),
+          }),
+        ]),
+      ]),
+    )),
   ]);
 }
 
@@ -140,7 +197,7 @@ function notificationsSection(open) {
       notification,
       people: waitingFor(notification.class_id),
       onResolve: resolveNotification,
-      onEnroll: (person) => openEnroll(person),
+      onEnroll: (person) => openEnroll(person, notification.class_id),
     }),
   );
 
@@ -150,9 +207,15 @@ function notificationsSection(open) {
   ]);
 }
 
-/** A fila daquela turma, em ordem de chegada e só quem ainda espera. */
+/**
+ * A fila daquela turma, em ordem de chegada e só quem ainda espera.
+ *
+ * Com vários horários por pessoa, "estar na fila desta turma" deixou de ser uma
+ * comparação de coluna e passou a ser uma pergunta sobre a lista de interesses
+ * — quem marcou Seg/Qua E Sáb aparece nas duas filas.
+ */
 function waitingFor(classId) {
-  return entries.filter((entry) => entry.class_id === classId && entry.status === 'waiting');
+  return entries.filter((entry) => entry.status === 'waiting' && wantsClass(entry, classId));
 }
 
 function groupSections(queue) {
@@ -306,10 +369,17 @@ async function confirmRemove(person) {
  * que entra pela lista de espera nasce com categoria, mensalidade e vencimento
  * como qualquer outro.
  */
-function openEnroll(person) {
+/**
+ * @param {string} [classId]  turma pela qual a pessoa está sendo chamada — vem
+ *                            do grupo da fila ou do aviso de vaga. Sem ela, a
+ *                            primeira turma de interesse é a sugerida.
+ */
+function openEnroll(person, classId) {
+  const targetClassId = resolveTargetClass(person, classId);
+
   openStudentModal({
     student: null,
-    defaults: { name: person.name, phone: formatPhone(person.phone), classId: person.class_id },
+    defaults: { name: person.name, phone: formatPhone(person.phone), classId: targetClassId },
     classes,
     onSave: async (payload, extras) => {
       let result;
@@ -332,7 +402,7 @@ function openEnroll(person) {
           status: 'enrolled',
           student_id: result.student.id,
         });
-        await resolveNotificationsOfClass(person.class_id);
+        await resolveNotificationsOfClass(targetClassId);
       } catch (error) {
         handleError(error, 'Aluno cadastrado, mas a lista de espera não foi atualizada.');
       }
@@ -341,6 +411,19 @@ function openEnroll(person) {
       await load();
     },
   });
+}
+
+/**
+ * Qual turma está em jogo nesta matrícula.
+ *
+ * A tela sempre sabe o contexto (o grupo da fila ou o aviso de vaga), então o
+ * primeiro parâmetro manda. Sem contexto, a primeira turma de interesse é o
+ * palpite razoável — e o professor troca no formulário, que continua sendo o
+ * mesmo cadastro de aluno de sempre.
+ */
+function resolveTargetClass(person, classId) {
+  if (classId) return classId;
+  return person.interests?.[0]?.class_id ?? null;
 }
 
 /* ============================================================

@@ -1,46 +1,53 @@
 /* Acesso a dados: reposições. */
 
 import { supabase } from '../supabase.js';
+import { cachedRead, cacheKey } from '../offline/cache.js';
 
 const COLUMNS =
   'id, student_id, original_session_id, makeup_session_id, original_date, makeup_date, status, notes';
 
 export async function listMakeupsForStudent(userId, studentId) {
-  const { data, error } = await supabase
-    .from('makeups')
-    .select(COLUMNS)
-    .eq('user_id', userId)
-    .eq('student_id', studentId)
-    .order('original_date', { ascending: false });
+  return cachedRead(cacheKey(userId, 'makeups', 'student', studentId), async () => {
+    const { data, error } = await supabase
+      .from('makeups')
+      .select(COLUMNS)
+      .eq('user_id', userId)
+      .eq('student_id', studentId)
+      .order('original_date', { ascending: false });
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 /** Reposições agendadas para uma sessão — os "convidados" da chamada. */
 export async function listMakeupsForSession(userId, sessionId) {
-  const { data, error } = await supabase
-    .from('makeups')
-    .select(`${COLUMNS}, students (id, name, category)`)
-    .eq('user_id', userId)
-    .eq('makeup_session_id', sessionId)
-    .in('status', ['scheduled', 'completed']);
+  return cachedRead(cacheKey(userId, 'makeups', 'session', sessionId), async () => {
+    const { data, error } = await supabase
+      .from('makeups')
+      .select(`${COLUMNS}, students (id, name, category)`)
+      .eq('user_id', userId)
+      .eq('makeup_session_id', sessionId)
+      .in('status', ['scheduled', 'completed']);
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 /** Reposições pendentes ou agendadas de todos os alunos. */
 export async function listOpenMakeups(userId) {
-  const { data, error } = await supabase
-    .from('makeups')
-    .select(`${COLUMNS}, students (id, name)`)
-    .eq('user_id', userId)
-    .in('status', ['pending', 'scheduled'])
-    .order('original_date', { ascending: false });
+  return cachedRead(cacheKey(userId, 'makeups', 'open'), async () => {
+    const { data, error } = await supabase
+      .from('makeups')
+      .select(`${COLUMNS}, students (id, name)`)
+      .eq('user_id', userId)
+      .in('status', ['pending', 'scheduled'])
+      .order('original_date', { ascending: false });
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 /**

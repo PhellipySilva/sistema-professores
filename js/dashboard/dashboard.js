@@ -1,4 +1,17 @@
-/* Dashboard (spec, seção 23). Indicadores reais, sem gráfico para encher espaço. */
+/* Dashboard (spec, seção 23). Indicadores reais, sem gráfico para encher espaço.
+ *
+ * A COR AQUI É INFORMAÇÃO
+ *
+ *   Cada indicador tem um assunto e uma cor fixa: alunos é azul, turmas é verde,
+ *   aulas de hoje é roxo, atraso é vermelho, e o mesmo vale no financeiro
+ *   (previsto azul, recebido verde, a receber laranja). A cor se repete no
+ *   atalho que leva àquele assunto, então o professor aprende a paleta uma vez e
+ *   passa a achar o cartão certo sem ler os rótulos.
+ *
+ *   O vermelho é EXCLUSIVO de atraso. Um zero pintado de vermelho alarmaria
+ *   justamente no dia em que está tudo em ordem — por isso o cartão de atrasados
+ *   só ganha cor quando existe atraso de verdade.
+ */
 
 import { handleError, initPage } from '../app.js';
 import { listStudents } from '../api/students.js';
@@ -10,6 +23,7 @@ import { listOpenNotifications } from '../api/waitlist.js';
 import { errorState } from '../components/empty-state.js';
 import { selectField, showFieldErrors } from '../components/form.js';
 import { icon } from '../components/icons.js';
+import { categoryBadge } from '../components/badges.js';
 import { showLoading } from '../components/loading.js';
 import { openFormModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -91,14 +105,23 @@ function renderDashboard({ students, classes, schedules, sessions, payments, mak
    ============================================================ */
 
 /**
- * Card de indicador: ícone discreto à esquerda, rótulo em cinza e o número em
+ * Card de indicador: ícone colorido à esquerda, rótulo em cinza e o número em
  * destaque. O ícone é enfeite funcional — dá ao olho um ponto de ancoragem para
  * achar o cartão certo sem ler todos os rótulos.
  *
- * @param {object} card  { label, value, iconName, hint, variant, money }
+ * `variant` pinta o ícone E a faixa lateral do card; `highlight` estende a cor
+ * ao número. Nos quatro indicadores do topo e nos três valores do mês a cor é
+ * informação (cada um tem o seu assunto e a sua cor), então todos destacam o
+ * número. Ver a nota de .stat em components.css.
+ *
+ * @param {object} card  { label, value, iconName, hint, variant, highlight, money }
  */
 function statCard(card) {
-  return el('div', { class: `stat${card.variant ? ` stat--${card.variant}` : ''}` }, [
+  const classes = ['stat'];
+  if (card.variant) classes.push(`stat--${card.variant}`);
+  if (card.variant && card.highlight) classes.push('stat--highlight');
+
+  return el('div', { class: classes.join(' ') }, [
     el('span', { class: 'stat__icon', html: icon(card.iconName, 18) }),
     el('div', { class: 'stat__body' }, [
       el('p', { class: 'stat__label', text: card.label }),
@@ -113,14 +136,29 @@ function statCard(card) {
 
 function statsGrid({ students, classes, todayClasses, overdue }) {
   const stats = [
-    { label: 'Alunos ativos', value: students.length, iconName: 'users' },
-    { label: 'Turmas', value: classes.length, iconName: 'layers' },
-    { label: 'Aulas hoje', value: todayClasses.length, iconName: 'calendar' },
     {
+      label: 'Alunos ativos',
+      value: students.length,
+      iconName: 'users',
+      variant: 'accent',
+      highlight: true,
+    },
+    { label: 'Turmas', value: classes.length, iconName: 'layers', variant: 'success', highlight: true },
+    {
+      label: 'Aulas hoje',
+      value: todayClasses.length,
+      iconName: 'calendar',
+      variant: 'sponsored',
+      highlight: true,
+    },
+    {
+      // Só fica vermelho quando existe atraso: um zero pintado de vermelho
+      // alarmaria justamente no dia em que está tudo em ordem.
       label: 'Atrasados',
       value: overdue.length,
       iconName: 'alert',
       variant: overdue.length > 0 ? 'danger' : null,
+      highlight: true,
     },
   ];
 
@@ -146,9 +184,11 @@ function financeSection(summary) {
       value: formatCurrency(summary.expectedCents),
       hint: 'Soma das mensalidades de quem é cobrado',
       iconName: 'wallet',
-      // O azul da marca fica no número que resume o mês — e em nenhum outro
-      // valor desta grade, senão deixa de destacar coisa alguma.
+      // Os três valores do mês têm a cor no número, porque nesta grade a cor é
+      // informação: azul é o previsto, verde é o que entrou, laranja é o que
+      // falta. As duas contagens ao lado ficam com o número em preto.
       variant: 'accent',
+      highlight: true,
       money: true,
     },
     {
@@ -157,6 +197,7 @@ function financeSection(summary) {
       hint: 'Pagamentos com baixa registrada neste mês',
       iconName: 'trendUp',
       variant: 'success',
+      highlight: true,
       money: true,
     },
     {
@@ -165,15 +206,18 @@ function financeSection(summary) {
       hint: 'Previsto menos recebido',
       iconName: 'clock',
       variant: summary.toReceiveCents > 0 ? 'warning' : null,
+      highlight: true,
       money: true,
     },
-    { label: 'Alunos pagantes', value: String(summary.payingCount), iconName: 'user' },
+    { label: 'Alunos pagantes', value: String(summary.payingCount), iconName: 'user', variant: 'sponsored' },
     {
       label: 'Patrocinados',
       value: String(summary.sponsoredCount),
       hint: 'Atletas sem mensalidade',
       iconName: 'award',
-      variant: 'sponsored',
+      // Rosa: patrocinado não é sucesso, erro nem alerta, e também não é o roxo
+      // dos pagantes ao lado. Cor própria para uma categoria própria.
+      variant: 'pink',
     },
   ];
 
@@ -198,17 +242,20 @@ function vacanciesSection(vacancies) {
         class: 'list-item',
         href: `/pages/lista-espera.html?class=${notification.class_id}`,
       }, [
-        el('div', {}, [
-          el('p', {
-            class: 'list-item__title',
-            text: notification.classes?.name ?? 'Turma',
-          }),
-          el('p', {
-            class: 'list-item__meta',
-            text: notification.student_name
-              ? `${notification.student_name} saiu — há gente na lista de espera`
-              : 'Há gente na lista de espera para este horário',
-          }),
+        el('div', { class: 'list-item__lead' }, [
+          el('span', { class: 'list-item__avatar list-item__avatar--sponsored', html: icon('bell', 18) }),
+          el('div', {}, [
+            el('p', {
+              class: 'list-item__title',
+              text: notification.classes?.name ?? 'Turma',
+            }),
+            el('p', {
+              class: 'list-item__meta',
+              text: notification.student_name
+                ? `${notification.student_name} saiu — há gente na lista de espera`
+                : 'Há gente na lista de espera para este horário',
+            }),
+          ]),
         ]),
         el('span', {
           class: `badge badge--${notification.status === 'new' ? 'danger' : 'warning'}`,
@@ -224,16 +271,21 @@ function vacanciesSection(vacancies) {
    ============================================================ */
 
 function shortcuts(students) {
+  // A cor de cada atalho é a do assunto para onde ele leva — a mesma que o
+  // indicador correspondente usa logo acima, na grade de cards.
   const items = [
     { label: 'Adicionar aluno', iconName: 'plus', href: '/pages/alunos.html' },
-    { label: 'Adicionar turma', iconName: 'plus', href: '/pages/turmas.html' },
-    { label: 'Abrir agenda', iconName: 'calendar', href: '/pages/agenda.html' },
-    { label: 'Planejar aula', iconName: 'clipboard', href: '/pages/planejamentos.html' },
-    { label: 'Lista de espera', iconName: 'bell', href: '/pages/lista-espera.html' },
+    { label: 'Adicionar turma', iconName: 'plus', href: '/pages/turmas.html', variant: 'success' },
+    { label: 'Abrir agenda', iconName: 'calendar', href: '/pages/agenda.html', variant: 'sponsored' },
+    { label: 'Planejar aula', iconName: 'clipboard', href: '/pages/planejamentos.html', variant: 'warning' },
+    { label: 'Lista de espera', iconName: 'bell', href: '/pages/lista-espera.html', variant: 'pink' },
   ];
 
   const buttons = items.map((item) =>
-    el('a', { class: 'shortcut', href: item.href }, [
+    el('a', {
+      class: `shortcut${item.variant ? ` shortcut--${item.variant}` : ''}`,
+      href: item.href,
+    }, [
       el('span', { class: 'shortcut__icon', html: icon(item.iconName, 18) }),
       el('span', { text: item.label }),
     ]),
@@ -243,7 +295,7 @@ function shortcuts(students) {
   buttons.push(
     el('button', {
       type: 'button',
-      class: 'shortcut',
+      class: 'shortcut shortcut--info',
       onclick: () => openPaymentPicker(students),
     }, [
       el('span', { class: 'shortcut__icon', html: icon('wallet', 18) }),
@@ -328,15 +380,25 @@ function occurrencesForToday(schedules, sessions) {
 
 function todaySection(occurrences) {
   const body = occurrences.length === 0
-    ? [el('p', { class: 'text-muted text-sm', text: 'Nenhuma aula programada para hoje.' })]
+    ? [
+        el('div', { class: 'list-item__lead' }, [
+          el('span', { class: 'list-item__avatar list-item__avatar--accent', html: icon('calendar', 18) }),
+          el('p', { class: 'text-muted text-sm', text: 'Nenhuma aula programada para hoje.' }),
+        ]),
+      ]
     : occurrences.map((occurrence) =>
         el('a', { class: 'list-item', href: `/pages/agenda.html?date=${occurrence.date}` }, [
-          el('div', {}, [
+          el('div', { class: 'stack-tight' }, [
             el('p', { class: 'list-item__title', text: occurrence.class_name }),
-            el('p', {
-              class: 'list-item__meta',
-              text: formatTimeRange(occurrence.start_time, occurrence.end_time),
-            }),
+            // Horário e categoria lado a lado: a cor da categoria é a mesma da
+            // turma na tela de turmas, então a leitura já é familiar.
+            el('div', { class: 'row row--wrap' }, [
+              el('p', {
+                class: 'list-item__meta',
+                text: formatTimeRange(occurrence.start_time, occurrence.end_time),
+              }),
+              occurrence.class_category ? categoryBadge(occurrence.class_category) : null,
+            ]),
           ]),
           occurrence.session
             ? el('span', { class: 'badge badge--success', text: 'Chamada iniciada' })
@@ -344,9 +406,11 @@ function todaySection(occurrences) {
         ]),
       );
 
+  // O bloco do dia é o que o professor abre a dashboard para ver: fundo azul
+  // claro e faixa lateral o separam das outras listas sem virar um botão.
   return el('section', { class: 'section' }, [
     el('h2', { class: 'section__title', text: 'Aulas de hoje' }),
-    el('div', { class: 'card card--flush' }, body),
+    el('div', { class: 'card card--flush card--today' }, body),
   ]);
 }
 
@@ -361,12 +425,15 @@ function overdueSection(overdue, paymentsByStudent) {
     el('h2', { class: 'section__title', text: 'Mensalidades atrasadas' }),
     el('div', { class: 'card card--flush' }, overdue.map((student) =>
       el('a', { class: 'list-item', href: `/pages/aluno.html?id=${student.id}` }, [
-        el('div', {}, [
-          el('p', { class: 'list-item__title', text: student.name }),
-          el('p', {
-            class: 'list-item__meta',
-            text: `${formatCurrency(student.monthly_fee_cents)} · vence dia ${student.due_day}`,
-          }),
+        el('div', { class: 'list-item__lead' }, [
+          el('span', { class: 'list-item__avatar list-item__avatar--danger', html: icon('user', 18) }),
+          el('div', {}, [
+            el('p', { class: 'list-item__title', text: student.name }),
+            el('p', {
+              class: 'list-item__meta',
+              text: `${formatCurrency(student.monthly_fee_cents)} · vence dia ${student.due_day}`,
+            }),
+          ]),
         ]),
         el('span', { class: 'badge badge--danger', text: 'Atrasado' }),
       ]),
@@ -400,12 +467,16 @@ function upcomingDuesSection(dues) {
     el('h2', { class: 'section__title', text: 'Próximos vencimentos' }),
     el('div', { class: 'card card--flush' }, dues.map(({ student, dueDate }) =>
       el('a', { class: 'list-item', href: `/pages/aluno.html?id=${student.id}` }, [
-        el('div', {}, [
-          el('p', { class: 'list-item__title', text: student.name }),
-          el('p', {
-            class: 'list-item__meta',
-            text: `${formatCurrency(student.monthly_fee_cents)} · vence em ${formatDateShortBR(dueDate)}`,
-          }),
+        // Azul, e não vermelho: o que ainda vai vencer não é problema nenhum.
+        el('div', { class: 'list-item__lead' }, [
+          el('span', { class: 'list-item__avatar list-item__avatar--accent', html: icon('clock', 18) }),
+          el('div', {}, [
+            el('p', { class: 'list-item__title', text: student.name }),
+            el('p', {
+              class: 'list-item__meta',
+              text: `${formatCurrency(student.monthly_fee_cents)} · vence em ${formatDateShortBR(dueDate)}`,
+            }),
+          ]),
         ]),
         el('span', { class: 'list-item__chevron', html: icon('chevronRight', 18) }),
       ]),
@@ -427,14 +498,17 @@ function makeupsSection(makeups) {
     }),
     el('div', { class: 'card card--flush' }, makeups.slice(0, 6).map((makeup) =>
       el('a', { class: 'list-item', href: `/pages/aluno.html?id=${makeup.student_id}` }, [
-        el('div', {}, [
-          el('p', { class: 'list-item__title', text: makeup.students?.name ?? 'Aluno' }),
-          el('p', {
-            class: 'list-item__meta',
-            text: makeup.makeup_date
-              ? `Repõe em ${formatDateShortBR(makeup.makeup_date)}`
-              : `Faltou em ${formatDateShortBR(makeup.original_date)} · sem data`,
-          }),
+        el('div', { class: 'list-item__lead' }, [
+          el('span', { class: 'list-item__avatar list-item__avatar--warning', html: icon('clock', 18) }),
+          el('div', {}, [
+            el('p', { class: 'list-item__title', text: makeup.students?.name ?? 'Aluno' }),
+            el('p', {
+              class: 'list-item__meta',
+              text: makeup.makeup_date
+                ? `Repõe em ${formatDateShortBR(makeup.makeup_date)}`
+                : `Faltou em ${formatDateShortBR(makeup.original_date)} · sem data`,
+            }),
+          ]),
         ]),
         el('span', {
           class: `badge badge--${makeup.status === 'scheduled' ? 'info' : 'warning'}`,

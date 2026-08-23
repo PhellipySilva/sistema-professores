@@ -51,7 +51,7 @@ async function loadProfile() {
 }
 
 function renderProfile({ student, classes, payments, attendance, makeups }) {
-  document.title = `${student.name} · Beach Tennis`;
+  document.title = `${student.name} · MatchPhoint`;
   titleNode.textContent = student.name;
 
   renderActions(student);

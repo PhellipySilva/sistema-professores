@@ -17,6 +17,7 @@ import { icon } from '../components/icons.js';
 import { showLoading } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, getQueryParam, render } from '../utils/dom.js';
+import { categoryBadge } from '../components/badges.js';
 import { formatCategory, formatPhone, pluralize, whatsappLink } from '../utils/formatters.js';
 import { formatDateShortBR, formatTime, formatTimeRange, todayISO, weekdayName } from '../utils/dates.js';
 import {
@@ -61,7 +62,7 @@ async function load() {
 }
 
 function renderClass(turma, enrolled, allStudents, waiting) {
-  document.title = `${turma.name} · Beach Tennis`;
+  document.title = `${turma.name} · MatchPhoint`;
   titleNode.textContent = turma.name;
 
   render($('#page-actions'), [
@@ -100,7 +101,7 @@ function summaryCard(turma, enrolledCount) {
         el('h2', { class: 'card__title', text: 'Horários' }),
         el('p', { class: 'card__meta', text: scheduleSummary(turma.class_schedules) }),
       ]),
-      el('span', { class: 'badge badge--neutral', text: formatCategory(turma.category) }),
+      categoryBadge(turma.category),
     ]),
     el('div', { class: 'info-list' }, [
       ...(scheduleRows.length > 0

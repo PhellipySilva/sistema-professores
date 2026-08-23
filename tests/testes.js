@@ -14,8 +14,10 @@ import {
   selectableReferenceMonths, studentFinancialStatus,
 } from '../js/financeiro/financeiro.js';
 import {
-  formatOccupancy, freeSlots, groupWaitlistByClass, hasVacancy, isFull,
+  formatOccupancy, freeSlots, groupWaitlistByClass, hasVacancy, isFull, wantsClass,
 } from '../js/lista-espera/vagas.js';
+import { scheduleShort } from '../js/turmas/turmas-ui.js';
+import { isConflict } from '../js/offline/conflitos.js';
 import { timestampToLocalISODate } from '../js/utils/dates.js';
 import { parseCurrencyToCents, formatCurrency, formatPhone, whatsappLink } from '../js/utils/formatters.js';
 import { validateDueDay } from '../js/utils/validators.js';
@@ -293,11 +295,23 @@ eq('ocupacao sem capacidade', formatOccupancy(4, null), '4 alunos matriculados')
 eq('ocupacao singular', formatOccupancy(1, null), '1 aluno matriculado');
 
 /* ---------- ORDEM DA LISTA DE ESPERA ---------- */
+const noite = {
+  class_id: 'T1', name: 'Adulto Noite',
+  class_schedules: [
+    { day_of_week: 2, start_time: '18:00:00', end_time: '19:00:00' },
+    { day_of_week: 4, start_time: '18:00:00', end_time: '19:00:00' },
+  ],
+};
+const sabado = {
+  class_id: 'T2', name: 'Adulto Sabado',
+  class_schedules: [{ day_of_week: 6, start_time: '09:00:00', end_time: '10:00:00' }],
+};
+
 const fila = [
-  { id: 'w1', name: 'João', class_id: 'T1', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-10T10:00:00.000Z', classes: { name: 'Adulto Noite' } },
-  { id: 'w2', name: 'Maria', class_id: 'T1', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-12T10:00:00.000Z', classes: { name: 'Adulto Noite' } },
-  { id: 'w3', name: 'Pedro', class_id: 'T1', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-15T10:00:00.000Z', classes: { name: 'Adulto Noite' } },
-  { id: 'w4', name: 'Ana', class_id: null, desired_slot: 'Sabado de manha', created_at: '2026-08-11T10:00:00.000Z', classes: null },
+  { id: 'w1', name: 'João', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-10T10:00:00.000Z', interests: [noite] },
+  { id: 'w2', name: 'Maria', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-12T10:00:00.000Z', interests: [noite] },
+  { id: 'w3', name: 'Pedro', desired_slot: 'Ter e Qui 18h', created_at: '2026-08-15T10:00:00.000Z', interests: [noite] },
+  { id: 'w4', name: 'Ana', desired_slot: 'Sabado de manha', created_at: '2026-08-11T10:00:00.000Z', interests: [] },
 ];
 const grupos = groupWaitlistByClass(fila);
 eq('fila agrupada por turma desejada', grupos.length, 2);
@@ -306,6 +320,51 @@ eq('grupo sem turma usa o horario escrito', grupos[1].label, 'Sabado de manha');
 eq('ordem de chegada preservada', grupos[0].people.map((p) => p.name), ['João', 'Maria', 'Pedro']);
 eq('posicoes numeradas a partir de 1', grupos[0].people.map((p) => p.position), [1, 2, 3]);
 eq('primeiro da fila e a primeira opcao', grupos[0].people[0].name, 'João');
+
+/* ---------- VARIOS HORARIOS PARA A MESMA PESSOA ---------- */
+const filaMulti = [
+  { id: 'm1', name: 'Joao', desired_slot: 'Noite ou sabado', created_at: '2026-08-10T10:00:00.000Z', interests: [noite, sabado] },
+  { id: 'm2', name: 'Bia', desired_slot: 'So sabado', created_at: '2026-08-11T10:00:00.000Z', interests: [sabado] },
+];
+const gruposMulti = groupWaitlistByClass(filaMulti);
+eq('pessoa com dois interesses entra nas duas filas', gruposMulti.length, 2);
+eq('fila da noite tem so quem a quer', gruposMulti[0].people.map((p) => p.name), ['Joao']);
+eq('fila de sabado respeita a ordem de chegada', gruposMulti[1].people.map((p) => p.name), ['Joao', 'Bia']);
+eq('posicao e propria de cada fila', gruposMulti[1].people.map((p) => p.position), [1, 2]);
+eq('a mesma turma nao vira dois grupos', new Set(gruposMulti.map((g) => g.classId)).size, 2);
+eq('grupo carrega a grade da turma para exibir', gruposMulti[1].schedules.length, 1);
+
+eq('interessado na turma e reconhecido', wantsClass(filaMulti[0], 'T2'), true);
+eq('nao interessado nao entra na conta', wantsClass(filaMulti[1], 'T1'), false);
+eq('sem interesse nenhum nao quebra', wantsClass({ name: 'X' }, 'T1'), false);
+
+/* ---------- HORARIO CURTO (selo da lista de espera) ---------- */
+eq('horario curto junta os dias', scheduleShort(noite.class_schedules), 'Ter/Qui 18h');
+eq('horario curto de um dia so', scheduleShort(sabado.class_schedules), 'Sáb 9h');
+eq('horario curto com minutos', scheduleShort([{ day_of_week: 1, start_time: '18:30:00', end_time: '19:30:00' }]), 'Seg 18h30');
+eq('horarios diferentes mostram so os dias', scheduleShort([
+  { day_of_week: 1, start_time: '17:00:00', end_time: '18:00:00' },
+  { day_of_week: 3, start_time: '19:00:00', end_time: '20:00:00' },
+]), 'Seg/Qua');
+eq('sem grade nao inventa horario', scheduleShort([]), '');
+
+/* ---------- CONFLITO DE SINCRONIZACAO (offline) ---------- */
+const marcacao = (base, op = 'upsert') => ({ op, baseUpdatedAt: base });
+const linha = (updatedAt) => ({ status: 'present', updated_at: updatedAt });
+
+eq('servidor intacto: pode gravar',
+  isConflict(marcacao('2026-08-20T10:00:00Z'), linha('2026-08-20T10:00:00Z')), false);
+eq('servidor mudou: nao sobrescreve',
+  isConflict(marcacao('2026-08-20T10:00:00Z'), linha('2026-08-20T11:30:00Z')), true);
+eq('linha nova offline, servidor vazio: pode gravar',
+  isConflict(marcacao(null), null), false);
+eq('linha nova offline, mas alguem marcou antes: conflito',
+  isConflict(marcacao(null), linha('2026-08-20T11:00:00Z')), true);
+eq('apagar o que ja sumiu nao e conflito',
+  isConflict(marcacao('2026-08-20T10:00:00Z', 'delete'), null), false);
+eq('gravar sobre linha apagada por outro: conflito',
+  isConflict(marcacao('2026-08-20T10:00:00Z'), null), true);
+eq('sem pendencia nenhuma nao quebra', isConflict(undefined, null), false);
 
 /* ---------- CONTATO ---------- */
 eq('whatsapp com DDD ganha o 55', whatsappLink('82999998888'), 'https://wa.me/5582999998888');

@@ -9,31 +9,36 @@
  */
 
 import { supabase } from '../supabase.js';
+import { cachedRead, cacheKey } from '../offline/cache.js';
 
 const COLUMNS =
   'id, name, phone, category, guardian_name, monthly_fee_cents, due_day, sponsored, created_at';
 
 export async function listStudents(userId) {
-  const { data, error } = await supabase
-    .from('students')
-    .select(COLUMNS)
-    .eq('user_id', userId)
-    .order('name');
+  return cachedRead(cacheKey(userId, 'students'), async () => {
+    const { data, error } = await supabase
+      .from('students')
+      .select(COLUMNS)
+      .eq('user_id', userId)
+      .order('name');
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 export async function getStudent(userId, studentId) {
-  const { data, error } = await supabase
-    .from('students')
-    .select(COLUMNS)
-    .eq('user_id', userId)
-    .eq('id', studentId)
-    .single();
+  return cachedRead(cacheKey(userId, 'student', studentId), async () => {
+    const { data, error } = await supabase
+      .from('students')
+      .select(COLUMNS)
+      .eq('user_id', userId)
+      .eq('id', studentId)
+      .single();
 
-  if (error) throw error;
-  return data;
+    if (error) throw error;
+    return data;
+  });
 }
 
 /**
