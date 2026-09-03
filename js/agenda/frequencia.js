@@ -1,7 +1,7 @@
 /* Interface da chamada: os botões grandes de presença (spec, seção 19). */
 
 import { el } from '../utils/dom.js';
-import { formatCategory } from '../utils/formatters.js';
+import { formatStudentType } from '../utils/formatters.js';
 
 export const ATTENDANCE_OPTIONS = [
   { value: 'present', label: 'Presente', modifier: 'present' },
@@ -55,7 +55,7 @@ export function attendanceRow({ student, status, isGuest = false, onSelect, onMa
       el('p', { class: 'attendance-row__name', text: student.name }),
       el('p', {
         class: 'attendance-row__meta',
-        text: isGuest ? 'Reposição · convidado' : formatCategory(student.category),
+        text: isGuest ? 'Reposição · convidado' : formatStudentType(student.student_type),
       }),
     ]),
     makeupButton,

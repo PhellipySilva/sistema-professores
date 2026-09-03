@@ -11,8 +11,11 @@
 import { supabase } from '../supabase.js';
 import { cachedRead, cacheKey } from '../offline/cache.js';
 
+/* `category` é o NÍVEL (E..PRO) e `student_type` é Kids/Adulto — os dois trocaram
+   de papel na migration 0009. `on_leave` separa "Geral" de "Alunos afastados". */
 const COLUMNS =
-  'id, name, phone, category, guardian_name, monthly_fee_cents, due_day, sponsored, created_at';
+  'id, name, phone, category, student_type, guardian_name, monthly_fee_cents, due_day, ' +
+  'sponsored, on_leave, created_at';
 
 export async function listStudents(userId) {
   return cachedRead(cacheKey(userId, 'students'), async () => {
@@ -42,8 +45,8 @@ export async function getStudent(userId, studentId) {
 }
 
 /**
- * @param {object} input  { name, phone, category, guardian_name, monthly_fee_cents, due_day,
- *                          sponsored }
+ * @param {object} input  { name, phone, category, student_type, guardian_name,
+ *                          monthly_fee_cents, due_day, sponsored }
  */
 export async function createStudent(userId, input) {
   const { data, error } = await supabase
@@ -67,6 +70,18 @@ export async function updateStudent(userId, studentId, input) {
 
   if (error) throw error;
   return data;
+}
+
+/**
+ * Afasta o aluno das aulas, ou o traz de volta.
+ *
+ * É um update de uma coluna só, e existe com nome próprio porque o gesto na
+ * tela é um só: um toque no card move o aluno entre "Geral" e "Alunos
+ * afastados". Nada mais do cadastro é tocado — voltar é o mesmo toque ao
+ * contrário.
+ */
+export async function setStudentOnLeave(userId, studentId, onLeave) {
+  return updateStudent(userId, studentId, { on_leave: onLeave });
 }
 
 /** Apaga o aluno e, em cascata, sua frequência, reposições e pagamentos. */

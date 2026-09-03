@@ -112,6 +112,50 @@
   --color-adulto: #1d4ed8;
   --color-adulto-soft: #dbeafe;
 
+  /* ---------- Cores: categoria do aluno (o nível) ----------
+     E, D, C, B, A e PRO numa escala fria → quente: o olho lê a progressão sem
+     precisar decorar qual letra vem antes de qual. O tom FORTE é a tinta da
+     letra; o SUAVE é o fundo do selo — a mesma dupla de todo selo do sistema.
+
+     Um nível novo é um par de variáveis aqui e uma entrada em LEVELS
+     (js/utils/formatters.js). Nenhuma regra de CSS precisa ser escrita: o selo
+     monta a classe .level-<letra> sozinho. */
+  --color-level-e: #475569;
+  --color-level-d: #0e7490;
+  --color-level-c: #15803d;
+  --color-level-b: #a16207;
+  --color-level-a: #c2410c;
+  --color-level-pro: #7e22ce;
+
+  --color-level-e-soft: #e8edf3;
+  --color-level-d-soft: #dcf0f5;
+  --color-level-c-soft: #dcf5e5;
+  --color-level-b-soft: #fbf0d8;
+  --color-level-a-soft: #ffe9dd;
+  --color-level-pro-soft: #f3e8fd;
+
+  /* ---------- Cores: card de planejamento por categoria ----------
+     Pastéis: fundo bem claro e borda um tom acima, na mesma matiz. A cor diz de
+     que categoria é o plano ANTES de o professor ler a letra do selo — e para
+     isso ela não pode disputar com o conteúdo, que continua em texto escuro
+     sobre fundo claro, com o mesmo contraste do card branco.
+
+     Servem SÓ ao fundo e à borda do card (ver .plan-card em components.css).
+     O selo da categoria continua com a paleta dele. */
+  --color-plan-e-bg: #eaf1fe;      /* E   — azul        */
+  --color-plan-d-bg: #e8f6fd;      /* D   — azul-claro  */
+  --color-plan-c-bg: #e9f7ee;      /* C   — verde       */
+  --color-plan-b-bg: #fdf4e3;      /* B   — amarelo     */
+  --color-plan-a-bg: #fdedec;      /* A   — vermelho    */
+  --color-plan-pro-bg: #f2ecfd;    /* PRO — roxo        */
+
+  --color-plan-e-border: #a9c4f5;
+  --color-plan-d-border: #9fd4ee;
+  --color-plan-c-border: #a2d8b5;
+  --color-plan-b-border: #ebc98f;
+  --color-plan-a-border: #efaeac;
+  --color-plan-pro-border: #c4aef0;
+
   /* ---------- Cores: dias da semana ----------
      Sete matizes no mesmo nível de saturação, para o olho ler a semana como uma
      escala e não como sete avisos.

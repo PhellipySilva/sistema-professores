@@ -2,7 +2,7 @@
 -- reset.sql — APAGA TUDO e devolve o banco ao estado zero
 -- =============================================================================
 --
--- ⚠️  DESTRUTIVO. Apaga as 12 tabelas do sistema e todos os dados dentro delas.
+-- ⚠️  DESTRUTIVO. Apaga as 14 tabelas do sistema e todos os dados dentro delas.
 --     NÃO apaga usuários (auth.users) nem nada fora do schema public.
 --
 -- Use quando:
@@ -13,7 +13,7 @@
 --
 -- Depois deste arquivo, rode em ordem:
 --   0001_schema.sql → 0002_rls.sql → 0003_triggers.sql → 0004 → 0005 → 0006
---   → 0007 → 0008
+--   → 0007 → 0008 → 0009 → 0010 → 0011
 -- =============================================================================
 
 -- O trigger vive em auth.users, então some antes das tabelas.
@@ -32,8 +32,10 @@ drop table if exists public.class_students  cascade;
 drop table if exists public.class_schedules cascade;
 drop table if exists public.classes         cascade;
 drop table if exists public.students        cascade;
+drop table if exists public.lesson_plan_shares cascade;
 drop table if exists public.lesson_plans    cascade;
 drop table if exists public.profiles        cascade;
 
+drop function if exists public.list_teachers();
 drop function if exists public.handle_new_user();
 drop function if exists public.set_updated_at();

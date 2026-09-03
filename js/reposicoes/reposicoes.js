@@ -6,16 +6,28 @@
  *
  * Sem data escolhida, a reposição fica 'pending' — o professor registra que
  * existe uma falta a repor e resolve a data depois.
+ *
+ * TODAS AS TURMAS APARECEM — INCLUSIVE AS CHEIAS
+ *
+ *   Uma reposição é uma visita, não uma matrícula: o aluno vai a UMA aula e
+ *   volta para a turma dele. Esconder as turmas lotadas tirava do professor a
+ *   única opção possível em semanas cheias, e ele acabava resolvendo por fora
+ *   do sistema. A lotação aparece em cada opção ('8/8 alunos'), e escolher uma
+ *   turma cheia pede uma confirmação — que é um aviso, não um bloqueio. A
+ *   decisão continua sendo dele.
  */
 
 import { listUpcomingSessions } from '../api/sessions.js';
+import { listClasses } from '../api/classes.js';
 import { upsertMakeup } from '../api/makeups.js';
 import { openFormModal } from '../components/modal.js';
+import { confirmDialog } from '../components/confirm-dialog.js';
 import { selectField, textareaField } from '../components/form.js';
 import { toast } from '../components/toast.js';
 import { handleError } from '../app.js';
 import { el } from '../utils/dom.js';
 import { formatDateShortBR, formatTime, todayISO } from '../utils/dates.js';
+import { formatOccupancy, isFull } from '../lista-espera/vagas.js';
 
 /**
  * @param {string}   options.userId
@@ -25,20 +37,44 @@ import { formatDateShortBR, formatTime, todayISO } from '../utils/dates.js';
  */
 export async function openMakeupModal({ userId, student, originalSession, onSaved }) {
   let sessions = [];
+  let classes = [];
 
   try {
-    sessions = await listUpcomingSessions(userId, todayISO());
+    // As turmas vêm junto só pela LOTAÇÃO: é ela que a opção mostra e o aviso
+    // usa. Uma consulta a mais, uma vez, contra uma por aula da lista.
+    [sessions, classes] = await Promise.all([
+      listUpcomingSessions(userId, todayISO()),
+      listClasses(userId),
+    ]);
   } catch (error) {
     handleError(error, 'Não foi possível carregar as aulas disponíveis.');
   }
 
+  const classById = new Map(classes.map((turma) => [turma.id, turma]));
+
+  const turmaOf = (session) => classById.get(session.class_id) ?? null;
+
   // A própria aula da falta não pode ser a reposição dela.
   const options = sessions
     .filter((session) => session.id !== originalSession.id)
-    .map((session) => ({
-      value: session.id,
-      label: `${formatDateShortBR(session.session_date)} · ${formatTime(session.start_time)} · ${session.classes?.name ?? 'Turma'}`,
-    }));
+    .map((session) => {
+      const turma = turmaOf(session);
+
+      const parts = [
+        formatDateShortBR(session.session_date),
+        formatTime(session.start_time),
+        session.classes?.name ?? 'Turma',
+      ];
+
+      // A lotação entra no rótulo da própria opção: a escolha é feita no
+      // select, e é ali que a informação precisa estar.
+      if (turma) {
+        parts.push(formatOccupancy(turma.student_count, turma.capacity));
+        if (isFull(turma.capacity, turma.student_count)) parts.push('turma cheia');
+      }
+
+      return { value: session.id, label: parts.join(' · ') };
+    });
 
   const fields = [
     el('p', {
@@ -50,7 +86,7 @@ export async function openMakeupModal({ userId, student, originalSession, onSave
       label: 'Aula da reposição',
       placeholder: options.length > 0 ? 'Escolher depois' : 'Nenhuma aula futura disponível',
       options,
-      hint: 'Só aparecem aulas já abertas na agenda. Deixe em branco para decidir depois.',
+      hint: 'Só aparecem aulas já abertas na agenda, com ou sem vaga. Deixe em branco para decidir depois.',
     }),
     textareaField({
       name: 'notes',
@@ -69,6 +105,24 @@ export async function openMakeupModal({ userId, student, originalSession, onSave
       const notes = (form.elements.notes.value ?? '').trim() || null;
 
       const chosen = sessions.find((session) => session.id === makeupSessionId);
+
+      /* Turma cheia não impede: pergunta. O texto é o do pedido, palavra por
+         palavra, e a resposta negativa devolve o professor ao formulário com
+         tudo preenchido — o `throw` é o que mantém o modal aberto. */
+      const turmaChosen = chosen ? turmaOf(chosen) : null;
+
+      if (turmaChosen && isFull(turmaChosen.capacity, turmaChosen.student_count)) {
+        const confirmed = await confirmDialog({
+          title: 'Turma na capacidade máxima',
+          message:
+            'Essa turma já atingiu a capacidade máxima recomendada. '
+            + 'Deseja realmente colocar esse aluno para repor nela?',
+          confirmLabel: 'Sim, colocar para repor',
+          danger: false,
+        });
+
+        if (!confirmed) throw new Error('cancelado');
+      }
 
       try {
         await upsertMakeup(userId, {

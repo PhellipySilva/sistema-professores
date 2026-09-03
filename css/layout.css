@@ -314,6 +314,65 @@
   outline-color: var(--color-nav-text-strong);
 }
 
+/* ---------- Subitens (Alunos: Ativos / Afastados) ----------
+   Recuados, um pouco menores e presos a um TRILHO vertical: pertencem ao item
+   de cima, e a hierarquia precisa ser visível antes de qualquer um ler os
+   rótulos. O trilho é a indicação de que "Alunos" tem duas telas dentro dele —
+   ele aparece em qualquer página, não só quando a seção está aberta.
+   Reaproveitam .sidebar__link inteiro — inclusive o azul do item atual. */
+
+/* O item com submenu vira uma linha só: o link continua levando à tela, e o
+   chevron ao lado abre e fecha a lista. São dois alvos separados de propósito —
+   expandir o menu não pode obrigar a sair da página em que se está. */
+.sidebar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.sidebar__row > .sidebar__link {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar__toggle {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--color-nav-text);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__toggle:hover {
+  background-color: var(--color-nav-hover);
+  color: var(--color-nav-text-strong);
+}
+
+.sidebar__toggle svg {
+  transition: transform var(--transition-fast);
+}
+
+/* Aberto, o chevron aponta para cima: a seta é o estado, não só o botão. */
+.sidebar__toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.sidebar__subnav {
+  display: flex;
+  flex-direction: column;
+  margin-inline-start: var(--space-6);
+  padding-inline-start: var(--space-3);
+  border-inline-start: var(--border-width) solid var(--color-nav-border);
+}
+
+.sidebar__sublink {
+  min-height: 36px;
+  font-size: var(--font-size-xs);
+}
+
 .sidebar__footer {
   margin-block-start: var(--space-3);
   padding-block-start: var(--space-3);
@@ -473,6 +532,32 @@
   display: grid;
   gap: var(--space-3);
   grid-template-columns: 1fr;
+}
+
+/* Visualização em grade — a segunda forma de ver os planejamentos.
+
+   Duas colunas no celular (a grade 2x2 do pedido), três no tablet e QUATRO no
+   computador: a grade acompanha o espaço disponível em vez de fixar um número
+   que sobra em tela grande e falta em tela pequena.
+
+   A classe DUPLA no seletor não é enfeite: .grid-cards muda de 1 para 2 e para
+   3 colunas dentro de media queries em responsive.css, que vem depois deste
+   arquivo. Com a especificidade dobrada, é esta escada que vale — inclusive
+   abaixo de 480px, onde a lista comum cai para uma coluna só. */
+.grid-cards.grid-cards--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (min-width: 641px) {
+  .grid-cards.grid-cards--2 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid-cards.grid-cards--2 {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .grid-stats {

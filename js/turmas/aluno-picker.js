@@ -11,7 +11,7 @@
 
 import { el, render } from '../utils/dom.js';
 import { weekdayShort } from '../utils/dates.js';
-import { formatCategory } from '../utils/formatters.js';
+import { formatStudentType } from '../utils/formatters.js';
 import { expandEnrollmentDays, normalizeEnrollmentDays, reconcileDays } from './matriculas.js';
 
 const SEARCH_THRESHOLD = 8;
@@ -108,7 +108,7 @@ export function buildStudentPicker({ students, classDays = [], enrollments = [] 
       checkbox,
       el('span', {}, [
         el('span', { class: 'picker__name', text: student.name }),
-        el('span', { class: 'picker__meta', text: formatCategory(student.category) }),
+        el('span', { class: 'picker__meta', text: formatStudentType(student.student_type) }),
       ]),
     ]);
 

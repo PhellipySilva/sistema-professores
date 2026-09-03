@@ -25,7 +25,7 @@ export async function listMakeupsForSession(userId, sessionId) {
   return cachedRead(cacheKey(userId, 'makeups', 'session', sessionId), async () => {
     const { data, error } = await supabase
       .from('makeups')
-      .select(`${COLUMNS}, students (id, name, category)`)
+      .select(`${COLUMNS}, students (id, name, category, student_type)`)
       .eq('user_id', userId)
       .eq('makeup_session_id', sessionId)
       .in('status', ['scheduled', 'completed']);

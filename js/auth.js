@@ -43,6 +43,37 @@ export async function signIn(email, password) {
 }
 
 /**
+ * Cria a conta do professor.
+ *
+ * O NOME viaja em `options.data`, que o Supabase grava em
+ * `auth.users.raw_user_meta_data`. É de lá que o trigger `handle_new_user`
+ * (migration 0003) tira o nome ao criar a linha em `profiles` — o mesmo caminho
+ * que já existia para o usuário criado pelo painel do Supabase. Nenhuma tabela
+ * nova, nenhuma escrita direta em `profiles`: a senha continua sendo assunto
+ * exclusivo do Auth.
+ *
+ * `session` vem null quando o projeto exige confirmação de e-mail. Não é erro —
+ * é o caso em que a conta existe mas ainda não pode entrar, e quem chama avisa
+ * isso na tela em vez de mandar para o dashboard.
+ *
+ * @returns {Promise<{ ok: true, session: object|null } | { ok: false, message: string }>}
+ */
+export async function signUp({ name, email, password }) {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { name: name.trim() } },
+  });
+
+  if (error) {
+    console.error('[auth] falha no cadastro', error);
+    return { ok: false, message: friendlyAuthError(error, 'Não foi possível criar a conta. Tente novamente.') };
+  }
+
+  return { ok: true, session: data.session ?? null };
+}
+
+/**
  * Sai do sistema e volta para o login.
  *
  * Antes de sair, tenta subir o que ficou pendente e APAGA o banco local. O
@@ -127,8 +158,12 @@ export function watchSession() {
 /**
  * Traduz o erro do Supabase para uma frase em português (spec, seção 30).
  * O objeto original já foi para o console em quem chamou.
+ *
+ * @param {unknown} error
+ * @param {string}  [fallback]  frase de reserva quando o erro não é conhecido.
+ *                              O padrão continua sendo o do login.
  */
-export function friendlyAuthError(error) {
+export function friendlyAuthError(error, fallback = 'Não foi possível entrar. Tente novamente.') {
   const message = error?.message ?? '';
 
   if (/invalid login credentials/i.test(message)) {
@@ -143,5 +178,15 @@ export function friendlyAuthError(error) {
   if (/failed to fetch|network/i.test(message)) {
     return 'Sem conexão com o servidor. Verifique sua internet.';
   }
-  return 'Não foi possível entrar. Tente novamente.';
+  // Só o cadastro chega nestes três, e a frase precisa dizer o que fazer.
+  if (/signups? not allowed|signup_disabled/i.test(message)) {
+    return 'O cadastro está desativado neste projeto. Ative em Authentication → Providers → Email.';
+  }
+  if (/already registered|already exists|user_repeated_signup/i.test(message)) {
+    return 'Já existe uma conta com este e-mail. Entre com ela.';
+  }
+  if (/password/i.test(message)) {
+    return 'A senha precisa ter ao menos 6 caracteres.';
+  }
+  return fallback;
 }

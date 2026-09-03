@@ -131,7 +131,9 @@ export function vacancyCard({ notification, people, onResolve, onEnroll }) {
         text: 'Ninguém na fila desta turma agora — a vaga pode ser oferecida a qualquer aluno.',
       })
     : el('div', { class: 'vacancy-people' }, people.slice(0, 5).map((person, index) =>
-        el('div', { class: 'list-item' }, [
+        // list-item--waitlist é o gancho do celular: a linha vira duas, dados em
+        // cima e ações embaixo (ver css/responsive.css). No computador nada muda.
+        el('div', { class: 'list-item list-item--waitlist' }, [
           el('div', { class: 'stack-tight' }, [
             el('p', { class: 'list-item__title', text: `${index + 1}º · ${person.name}` }),
             el('p', { class: 'list-item__meta', text: formatPhone(person.phone) }),
@@ -141,7 +143,7 @@ export function vacancyCard({ notification, people, onResolve, onEnroll }) {
               ? interestBadges(person, { highlightClassId: notification.class_id })
               : null,
           ]),
-          el('div', { class: 'row' }, [
+          el('div', { class: 'row row--wrap list-item__actions' }, [
             el('a', {
               class: 'btn btn--secondary btn--sm',
               href: whatsappLink(person.phone),
@@ -281,7 +283,7 @@ export function waitlistGroup(group, { onContact, onEnroll, onEdit, onRemove }) 
       }),
     );
 
-    return el('div', { class: 'list-item' }, [
+    return el('div', { class: 'list-item list-item--waitlist' }, [
       el('div', { class: 'stack-tight' }, [
         el('p', { class: 'list-item__title', text: `${person.position}º · ${person.name}` }),
         el('p', { class: 'list-item__meta', text: meta.join(' · ') }),
@@ -290,11 +292,14 @@ export function waitlistGroup(group, { onContact, onEnroll, onEdit, onRemove }) 
         interestBadges(person, { highlightClassId: group.classId }),
         person.notes ? el('p', { class: 'list-item__meta', text: person.notes }) : null,
       ]),
-      el('div', { class: 'row' }, [waitlistBadge(person.status), el('div', { class: 'row' }, actions)]),
+      el('div', { class: 'row row--wrap list-item__actions' }, [
+        waitlistBadge(person.status),
+        el('div', { class: 'row row--wrap' }, actions),
+      ]),
     ]);
   });
 
-  return el('section', { class: 'section' }, [
+  return el('section', { class: 'section section--waitlist' }, [
     header,
     el('div', { class: 'card card--flush' }, rows),
   ]);

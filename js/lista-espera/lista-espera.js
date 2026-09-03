@@ -152,19 +152,19 @@ function renderPage() {
 function peopleSection(queue) {
   if (queue.length === 0) return null;
 
-  return el('section', { class: 'section' }, [
+  return el('section', { class: 'section section--waitlist' }, [
     el('h2', {
       class: 'section__title',
       text: `Pessoas na lista · ${queue.length}`,
     }),
     el('div', { class: 'card card--flush' }, queue.map((person) =>
-      el('div', { class: 'list-item' }, [
+      el('div', { class: 'list-item list-item--waitlist' }, [
         el('div', { class: 'stack-tight' }, [
           el('p', { class: 'list-item__title', text: person.name }),
           el('p', { class: 'list-item__meta', text: formatPhone(person.phone) }),
           interestBadges(person),
         ]),
-        el('div', { class: 'row' }, [
+        el('div', { class: 'row row--wrap list-item__actions' }, [
           waitlistBadge(person.status),
           el('a', {
             class: 'btn btn--ghost btn--icon',

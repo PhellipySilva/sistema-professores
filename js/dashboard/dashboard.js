@@ -71,7 +71,24 @@ async function load() {
         listOpenNotifications(user.id),
       ]);
 
-    renderDashboard({ students, classes, schedules, sessions, payments, makeups, vacancies });
+    /* O dashboard é a tela dos alunos ATIVOS: quem está afastado não conta em
+       indicador nenhum, nem no dinheiro. Filtrar aqui, uma vez, mantém as três
+       quantias do mês (previsto, recebido, a receber) falando do mesmo grupo —
+       somar o recebido de quem saiu da conta do previsto daria um "a receber"
+       que não fecha com nada. */
+    const activeStudents = students.filter((student) => !student.on_leave);
+    const activeIds = new Set(activeStudents.map((student) => student.id));
+    const activePayments = payments.filter((payment) => activeIds.has(payment.student_id));
+
+    renderDashboard({
+      students: activeStudents,
+      classes,
+      schedules,
+      sessions,
+      payments: activePayments,
+      makeups,
+      vacancies,
+    });
   } catch (error) {
     handleError(error, 'Não foi possível carregar o dashboard.');
     render(content, errorState({ message: 'Não foi possível carregar o dashboard.', onRetry: load }));

@@ -3,20 +3,21 @@
 
 import { el } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
-import { categoryBadge, categoryVariant } from '../components/badges.js';
+import { categoryVariant, levelBadge, studentTypeBadge } from '../components/badges.js';
 import { checkboxField, selectField, showFieldErrors, textField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
-import { CATEGORIES, centsToInputValue, formatCategory, formatCurrency, formatPhone, normalizePhone, parseCurrencyToCents } from '../utils/formatters.js';
+import { LEVELS, LEVEL_OPTIONS, STUDENT_TYPES, centsToInputValue, formatCategory, formatCurrency, formatPhone, normalizePhone, parseCurrencyToCents } from '../utils/formatters.js';
 import { financialStatusLabel, selectableReferenceMonths } from '../financeiro/financeiro.js';
 import { monthLabel } from '../utils/dates.js';
 import { openClassModal } from '../turmas/turmas-ui.js';
 import {
-  validateCategory,
   validateDueDay,
   validateGuardianName,
+  validateLevel,
   validateMonthlyFee,
   validateName,
   validatePhone,
+  validateStudentType,
 } from '../utils/validators.js';
 
 /* ============================================================
@@ -44,15 +45,18 @@ export function financialBadge(status) {
 /**
  * Card do aluno na listagem.
  *
- * A categoria dá a cor do CARD INTEIRO — verde para Kids, azul para Adulto —,
- * e não só a do selo ao lado do nome. Ver a nota de .student-card em
- * css/components.css: nenhuma cor é escolhida aqui, só a classe da categoria.
+ * O TIPO dá a cor do CARD INTEIRO — verde para Kids, azul para Adulto —, e não
+ * só a do selo ao lado do nome. Ver a nota de .student-card em
+ * css/components.css: nenhuma cor é escolhida aqui, só a classe do tipo.
+ *
+ * Ao lado do tipo vem a CATEGORIA (E, D, C, B, A, PRO): são duas perguntas
+ * diferentes sobre o mesmo aluno, e desde a migration 0009 elas moram em duas
+ * colunas — `student_type` e `category`.
  *
  * O selo da direita continua sendo o da situação financeira, inclusive o roxo
  * de "Patrocinado", que pode aparecer em qualquer categoria.
  */
-export function studentCard(student, financialStatus, { onEdit, onDelete }) {
-  // A categoria sai do texto e vira selo colorido, ao lado do nome.
+export function studentCard(student, financialStatus, { onEdit, onDelete, onToggleLeave }) {
   const meta = student.phone ? [formatPhone(student.phone)] : [];
 
   const details = [
@@ -62,7 +66,8 @@ export function studentCard(student, financialStatus, { onEdit, onDelete }) {
       text: student.name,
     }),
     el('div', { class: 'row row--wrap' }, [
-      categoryBadge(student.category),
+      levelBadge(student.category),
+      studentTypeBadge(student.student_type),
       meta.length > 0 ? el('p', { class: 'card__meta', text: meta.join(' · ') }) : null,
     ]),
   ];
@@ -73,14 +78,35 @@ export function studentCard(student, financialStatus, { onEdit, onDelete }) {
     );
   }
 
+  /* Mover entre "Geral" e "Alunos afastados" é UM toque, no mesmo lugar em que
+     já se edita e exclui — sem formulário, sem motivo obrigatório, sem confirmar.
+     É o oposto de excluir: nada do cadastro se perde, e o caminho de volta é o
+     mesmo botão. */
+  const leaveButton = onToggleLeave
+    ? el('button', {
+        type: 'button',
+        class: 'btn btn--ghost btn--icon',
+        'aria-label': student.on_leave
+          ? `Trazer ${student.name} de volta às aulas`
+          : `Afastar ${student.name} temporariamente`,
+        title: student.on_leave ? 'Trazer de volta' : 'Afastar',
+        html: icon(student.on_leave ? 'check' : 'clock', 18),
+        onclick: () => onToggleLeave(student),
+      })
+    : null;
+
   return el('article', {
-    class: `card student-card student-card--${categoryVariant(student.category)}`,
+    class: `card student-card student-card--${categoryVariant(student.student_type)}`,
   }, [
     el('div', { class: 'card__header' }, [
       el('div', { class: 'stack-tight' }, details),
-      financialBadge(financialStatus),
+      el('div', { class: 'row row--wrap' }, [
+        student.on_leave ? el('span', { class: 'badge badge--warning', text: 'Afastado' }) : null,
+        financialBadge(financialStatus),
+      ]),
     ]),
     el('div', { class: 'card__footer' }, [
+      leaveButton,
       el('button', {
         type: 'button',
         class: 'btn btn--ghost btn--icon',
@@ -119,6 +145,162 @@ export function searchBar({ value = '', onInput }) {
     el('span', { class: 'search__icon', html: icon('search', 18) }),
     input,
   ]);
+}
+
+/* ============================================================
+   Resumo: quantos alunos por categoria e por tipo
+   ============================================================ */
+
+/**
+ * Conta os alunos por categoria (E…PRO) e por tipo (Kids/Adulto).
+ *
+ * Função pura, separada do desenho, porque a pergunta é de contagem e não de
+ * tela. As seis categorias aparecem SEMPRE, mesmo zeradas: a escala só se lê
+ * inteira — "nenhum PRO" é uma resposta, e uma lista que muda de tamanho a cada
+ * mês esconderia isso.
+ *
+ * @param {object[]} students
+ * @returns {{total: number, byLevel: {level: string, count: number}[],
+ *            byType: {type: string, count: number}[]}}
+ */
+export function summarizeStudents(students) {
+  const levels = new Map(LEVELS.map((level) => [level, 0]));
+  const types = new Map([['kids', 0], ['adulto', 0]]);
+
+  for (const student of students) {
+    if (levels.has(student.category)) levels.set(student.category, levels.get(student.category) + 1);
+    if (types.has(student.student_type)) types.set(student.student_type, types.get(student.student_type) + 1);
+  }
+
+  return {
+    total: students.length,
+    byLevel: [...levels].map(([level, count]) => ({ level, count })),
+    byType: [...types].map(([type, count]) => ({ type, count })),
+  };
+}
+
+/** Selo + número: 'B 4'. O selo dá a cor, o número dá a resposta. */
+function countPill(badge, count) {
+  return el('span', { class: `count-pill${count === 0 ? ' count-pill--empty' : ''}` }, [
+    badge,
+    el('span', { class: 'count-pill__value', text: String(count) }),
+  ]);
+}
+
+/**
+ * A dashboard da tela de alunos: um card, duas linhas de contagem.
+ *
+ * Fica acima da busca porque responde à pergunta que se faz ANTES de procurar
+ * alguém — "como está distribuída a minha turma?". Conta o GRUPO exibido
+ * (ativos ou afastados) inteiro, sem olhar a busca nem os filtros: é um retrato
+ * do grupo, e um retrato que mudasse a cada tecla digitada não seria retrato.
+ *
+ * @param {object[]} students  o grupo já exibido na tela
+ * @param {string}   title     'Alunos ativos' ou 'Alunos afastados'
+ */
+export function studentsOverview(students, { title }) {
+  const summary = summarizeStudents(students);
+
+  const block = (label, pills) =>
+    el('div', { class: 'stack-tight' }, [
+      el('p', { class: 'overview__label', text: label }),
+      el('div', { class: 'row row--wrap' }, pills),
+    ]);
+
+  return el('section', { class: 'card overview' }, [
+    el('div', { class: 'card__header' }, [
+      el('h2', { class: 'card__title', text: title }),
+      el('span', { class: 'badge badge--primary', text: String(summary.total) }),
+    ]),
+    el('div', { class: 'overview__blocks' }, [
+      block('Por categoria', summary.byLevel.map(({ level, count }) =>
+        countPill(levelBadge(level), count),
+      )),
+      block('Por tipo de aluno', summary.byType.map(({ type, count }) =>
+        countPill(studentTypeBadge(type), count),
+      )),
+    ]),
+  ]);
+}
+
+/* ============================================================
+   Filtro por categoria e tipo de aluno
+   ============================================================ */
+
+/** Nenhum filtro ligado. Estado inicial da tela e resultado de "limpar". */
+export const NO_STUDENT_FILTERS = { category: null, student_type: null };
+
+/**
+ * O aluno passa pelos filtros ligados?
+ *
+ * Função pura, e cada filtro é independente do outro: sem valor escolhido, o
+ * campo não opina. É o que faz "Categoria B" e "Categoria B + Kids" serem duas
+ * perguntas que convivem sem uma anular a outra.
+ */
+export function matchesStudentFilters(student, filters = NO_STUDENT_FILTERS) {
+  if (filters.category && student.category !== filters.category) return false;
+  if (filters.student_type && student.student_type !== filters.student_type) return false;
+  return true;
+}
+
+/** Quantos filtros estão ligados — vira o número no botão "Filtrar". */
+export function countStudentFilters(filters = NO_STUDENT_FILTERS) {
+  return [filters.category, filters.student_type].filter(Boolean).length;
+}
+
+/**
+ * Botão "Filtrar", com a contagem do que está ligado.
+ *
+ * A contagem existe para o filtro nunca ficar invisível: dois toques depois, a
+ * lista curta na tela tem uma explicação à vista, em vez de parecer que o
+ * sistema perdeu alunos.
+ */
+export function filterButton({ filters, onClick }) {
+  const active = countStudentFilters(filters);
+
+  return el('button', {
+    type: 'button',
+    class: 'btn btn--secondary',
+    'aria-label': 'Filtrar alunos por categoria e tipo',
+    html: `${icon('layers', 18)}<span>Filtrar</span>`,
+    onclick: onClick,
+  }, active > 0 ? [el('span', { class: 'badge badge--primary', text: String(active) })] : []);
+}
+
+/**
+ * Modal com os dois filtros pedidos.
+ *
+ * A primeira opção de cada campo é "Todas"/"Todos" e vale string vazia — é
+ * assim que se DESLIGA um filtro. Um placeholder desabilitado (o padrão de
+ * `selectField`) deixaria o professor sem caminho de volta depois de escolher.
+ */
+export function openStudentFilterModal({ filters = NO_STUDENT_FILTERS, onApply }) {
+  const fields = [
+    selectField({
+      name: 'category',
+      label: 'Categoria',
+      options: [{ value: '', label: 'Todas as categorias' }, ...LEVEL_OPTIONS],
+      value: filters.category ?? '',
+    }),
+    selectField({
+      name: 'student_type',
+      label: 'Tipo de aluno',
+      options: [{ value: '', label: 'Todos os tipos' }, ...STUDENT_TYPES],
+      value: filters.student_type ?? '',
+    }),
+  ];
+
+  return openFormModal({
+    title: 'Filtrar alunos',
+    fields,
+    submitLabel: 'Aplicar filtros',
+    onSubmit: async (form) => {
+      onApply({
+        category: form.elements.category.value || null,
+        student_type: form.elements.student_type.value || null,
+      });
+    },
+  });
 }
 
 /* ============================================================
@@ -161,18 +343,26 @@ export function openStudentModal({ student, defaults = {}, classes = [], onSave,
       inputmode: 'tel',
       autocomplete: 'tel',
     }),
+    // "Categoria" agora é o NÍVEL; Kids/Adulto desceu para o campo seguinte.
     selectField({
       name: 'category',
       label: 'Categoria',
-      options: CATEGORIES,
-      value: student?.category ?? 'adulto',
+      placeholder: 'Selecione a categoria',
+      options: LEVEL_OPTIONS,
+      value: student?.category ?? '',
+    }),
+    selectField({
+      name: 'student_type',
+      label: 'Tipo de aluno',
+      options: STUDENT_TYPES,
+      value: student?.student_type ?? 'adulto',
     }),
     textField({
       name: 'guardian_name',
       label: 'Responsável',
       value: student?.guardian_name ?? '',
       placeholder: 'Nome do responsável',
-      hint: 'Obrigatório para alunos da categoria Kids.',
+      hint: 'Obrigatório para alunos do tipo Kids.',
     }),
   ];
 
@@ -246,8 +436,9 @@ export function openStudentModal({ student, defaults = {}, classes = [], onSave,
       const errors = {
         name: validateName(values.name),
         phone: validatePhone(values.phoneRaw),
-        category: validateCategory(values.category),
-        guardian_name: validateGuardianName(values.guardian_name, values.category),
+        category: validateLevel(values.category),
+        student_type: validateStudentType(values.student_type),
+        guardian_name: validateGuardianName(values.guardian_name, values.student_type),
         monthly_fee: values.sponsored ? null : validateMonthlyFee(values.monthlyFeeRaw),
         due_day: values.sponsored ? null : validateDueDay(values.dueDayRaw),
       };
@@ -367,6 +558,7 @@ function readStudentForm(form) {
   const name = get('name');
   const phoneRaw = get('phone');
   const category = get('category');
+  const student_type = get('student_type');
   const guardian_name = get('guardian_name');
   const monthlyFeeRaw = get('monthly_fee');
   const dueDayRaw = get('due_day');
@@ -380,6 +572,7 @@ function readStudentForm(form) {
     name,
     phoneRaw,
     category,
+    student_type,
     guardian_name,
     monthlyFeeRaw,
     dueDayRaw,
@@ -392,6 +585,7 @@ function readStudentForm(form) {
       name,
       phone: normalizePhone(phoneRaw),
       category,
+      student_type,
       guardian_name: guardian_name || null,
       // Mensalidade e vencimento são gravados mesmo com o patrocínio ligado:
       // ficam guardados, ignorados pelo cálculo, prontos para quando ele acabar.
@@ -423,14 +617,13 @@ export function infoBadgeRow(label, node) {
 
 export function studentSummaryCard(student, financialStatus) {
   const rows = [
-    // O nível é o mesmo dado que já existia em `students.category` — a mudança
-    // é só de apresentação: selo colorido no lugar de texto, na mesma cor que a
-    // categoria tem no card da turma. Nada novo foi gravado no banco.
-    infoBadgeRow('Nível', categoryBadge(student.category)),
+    // "Categoria" na tela, `category` no banco: E, D, C, B, A ou PRO.
+    infoBadgeRow('Categoria', levelBadge(student.category) ?? el('span', { text: '—' })),
+    infoBadgeRow('Tipo de aluno', studentTypeBadge(student.student_type)),
     infoRow('Telefone', student.phone ? formatPhone(student.phone) : ''),
   ];
 
-  if (student.category === 'kids' || student.guardian_name) {
+  if (student.student_type === 'kids' || student.guardian_name) {
     rows.push(infoRow('Responsável', student.guardian_name));
   }
 
@@ -445,14 +638,17 @@ export function studentSummaryCard(student, financialStatus) {
         ),
   );
 
-  // A mesma cor de categoria da listagem: o aluno que era um card verde na
-  // lista não pode virar um card branco ao ser aberto.
+  // A mesma cor de tipo da listagem: o aluno que era um card verde na lista não
+  // pode virar um card branco ao ser aberto.
   return el('section', {
-    class: `card student-card student-card--${categoryVariant(student.category)}`,
+    class: `card student-card student-card--${categoryVariant(student.student_type)}`,
   }, [
     el('div', { class: 'card__header' }, [
       el('h2', { class: 'card__title', text: 'Dados do aluno' }),
-      financialBadge(financialStatus),
+      el('div', { class: 'row row--wrap' }, [
+        student.on_leave ? el('span', { class: 'badge badge--warning', text: 'Afastado' }) : null,
+        financialBadge(financialStatus),
+      ]),
     ]),
     el('div', { class: 'info-list' }, rows),
   ]);

@@ -88,6 +88,9 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 6 | `0006_patrocinados_lista_espera.sql` | Atleta patrocinado, vagas da turma, lista de espera e avisos |
 | 7 | `0007_lista_espera_multiplas_turmas.sql` | Uma pessoa da fila passa a poder querer **várias** turmas |
 | 8 | `0008_planejamento_turma.sql` | Planejamento com turma ou geral (`class_id` opcional) |
+| 9 | `0009_categorias_tipo_aluno_afastados.sql` | Categoria vira o nível (E…PRO), tipo do aluno (Kids/Adulto), aluno afastado e categoria do planejamento |
+| 10 | `0010_compartilhar_planejamento.sql` | Compartilhar um planejamento com outro professor (tabela `lesson_plan_shares` e função `list_teachers()`) |
+| 11 | `0011_nome_do_professor.sql` | O seletor de compartilhamento mostra o nome do professor, nunca o apelido do e-mail |
 
 Para conferir que deu certo, rode:
 
@@ -98,8 +101,13 @@ where schemaname = 'public'
 order by tablename;
 ```
 
-Devem aparecer **13 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
+Devem aparecer **14 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
 foi aplicado e os dados estariam expostos — não siga adiante.
+
+> **A migration 0009 troca o significado de `students.category`**: o que era Kids/Adulto passa a
+> ser o NÍVEL (E, D, C, B, A, PRO), e Kids/Adulto vai para a coluna nova `students.student_type`.
+> O valor antigo é copiado antes da troca — nada se perde —, e todo aluno já cadastrado começa no
+> nível E até o professor ajustar. `classes.category` continua sendo Kids/Adulto.
 
 > **A migration 0007 remove a coluna `waitlist_entries.class_id`** — depois de copiar o que havia
 > nela para a tabela nova `waitlist_entry_classes`. Nenhum dado se perde, mas o site publicado
@@ -123,7 +131,18 @@ Em **Authentication → Users → Add user**:
 3. Opcionalmente, em *User Metadata*, adicione `{ "name": "Seu Nome" }` — o trigger usa isso no
    perfil. Sem esse campo, o nome vira a parte do e-mail antes do `@`.
 
-O MVP não tem tela de cadastro público: há um único professor, criado aqui.
+Também dá para criar a conta pela própria tela de login, no botão **Criar conta**: nome, e-mail e
+senha. O nome digitado ali chega ao perfil pelo mesmo caminho (`raw_user_meta_data` → trigger
+`handle_new_user`) e é o que aparece para os outros professores no compartilhamento de
+planejamentos. Se o projeto exigir confirmação de e-mail, a conta é criada mas o login só funciona
+depois de o professor confirmar — em **Authentication → Providers → Email** você decide.
+
+Para quem já tinha conta antes desta tela, o nome no perfil pode ser a parte do e-mail antes do
+`@`. Corrija direto no banco quando quiser:
+
+```sql
+update public.profiles set name = 'Erick Souza' where email = 'erick@exemplo.com';
+```
 
 Confira que o perfil foi criado pelo trigger:
 
@@ -356,6 +375,10 @@ A regra que mantém isso honesto, verificável com um `grep`:
   da semana, nível no perfil do aluno e filtro de turmas por dia
 - [x] **Fase 15** — Lista de espera com vários horários por pessoa, planejamento com ou sem turma,
   funcionamento offline (Service Worker + IndexedDB) e a identidade de cor por dia no card da turma
+- [x] **Fase 16** — Categoria do aluno como nível (E…PRO) e tipo Adulto/Kids, filtro de alunos,
+  alunos afastados, planejamentos com categoria, filtro e grade 2x2, compartilhamento de
+  planejamento com outro professor, turmas e planos ordenados por horário e reposição em turma
+  lotada mediante confirmação
 
 ## Funcionamento offline
 

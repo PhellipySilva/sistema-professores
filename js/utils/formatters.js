@@ -75,6 +75,60 @@ export const CATEGORIES = Object.entries(CATEGORY_LABELS).map(([value, label]) =
   label,
 }));
 
+/* ---------- Tipo do aluno (Adulto / Kids) ----------
+
+   É o MESMO par de valores da categoria da turma — 'kids' e 'adulto' —, e por
+   isso reaproveita os rótulos acima em vez de repeti-los. O que mudou foi só o
+   nome do campo no cadastro do aluno: o que era "Categoria" virou
+   "Tipo de aluno", e "Categoria" passou a ser o nível (abaixo). */
+
+export const STUDENT_TYPES = CATEGORIES;
+
+export function formatStudentType(type) {
+  return formatCategory(type);
+}
+
+/* ---------- Categoria do aluno e do planejamento: o nível ----------
+
+   E, D, C, B, A e PRO. A ordem da lista é a do progresso do aluno, do primeiro
+   nível ao último — é assim que ela aparece no formulário e no filtro.
+
+   Os rótulos são as próprias letras: não existe nome por extenso para elas, e
+   inventar um ('Iniciante', 'Avançado') seria pôr na tela uma palavra que o
+   professor não usa. formatLevel existe mesmo assim para as telas terem um
+   único lugar por onde passar — inclusive o cadastro antigo, sem nível. */
+
+export const LEVELS = ['E', 'D', 'C', 'B', 'A', 'PRO'];
+
+export const LEVEL_OPTIONS = LEVELS.map((level) => ({ value: level, label: level }));
+
+export function formatLevel(level) {
+  return LEVELS.includes(level) ? level : '';
+}
+
+/**
+ * Como um professor aparece na tela: o NOME, exatamente como está no cadastro.
+ *
+ * Sem cargo colado na frente, sem abreviar para o primeiro nome, sem inventar
+ * nada a partir do endereço: 'Erick Souza' aparece 'Erick Souza'. É o valor de
+ * `profiles.name` — a única coisa, além do id, que `list_teachers()` entrega à
+ * tela de compartilhamento (migration 0010).
+ *
+ * E-MAIL NUNCA APARECE. Se um endereço tiver ido parar na coluna do nome, o
+ * texto de reserva entra no lugar dele — inteiro, e não um pedaço do endereço.
+ * Esse rótulo também é o sinal de qual perfil ainda precisa de nome no banco.
+ *
+ * 'Erick Souza'       → 'Erick Souza'
+ * 'erick@escola.com'  → 'Professor sem nome'
+ * ''                  → 'Professor sem nome'
+ */
+export function teacherLabel(name) {
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed || trimmed.includes('@')) return 'Professor sem nome';
+
+  return trimmed;
+}
+
 /** 0.8333 → '83%' */
 export function formatPercent(ratio) {
   if (ratio === null || ratio === undefined || Number.isNaN(ratio)) return '—';

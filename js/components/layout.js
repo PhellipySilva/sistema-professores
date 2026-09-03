@@ -18,10 +18,25 @@ import { connectionIndicator } from './connection.js';
 // url() relativa no CSS.
 import logoMatchPhoint from '../../assets/brand/matchphoint.png';
 
-/** Navegação principal (spec, seção 24). Cinco itens — nem um a mais. */
+/** Navegação principal (spec, seção 24). Cinco itens — nem um a mais.
+ *
+ * "Alunos" é o único com SUBITENS: Alunos ativos e Alunos afastados são a mesma
+ * tela com dois conjuntos de alunos, e por isso não viram um sexto item do menu.
+ * Eles nascem RECOLHIDOS, atrás do chevron ao lado do item — o menu continua
+ * com cinco linhas até alguém pedir para ver as duas. */
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Início', fullLabel: 'Dashboard', href: '/pages/dashboard.html', icon: 'dashboard' },
-  { id: 'alunos', label: 'Alunos', fullLabel: 'Alunos', href: '/pages/alunos.html', icon: 'user' },
+  {
+    id: 'alunos',
+    label: 'Alunos',
+    fullLabel: 'Alunos',
+    href: '/pages/alunos.html',
+    icon: 'user',
+    children: [
+      { label: 'Alunos ativos', href: '/pages/alunos.html' },
+      { label: 'Alunos afastados', href: '/pages/alunos.html?tipo=afastados' },
+    ],
+  },
   { id: 'turmas', label: 'Turmas', fullLabel: 'Turmas', href: '/pages/turmas.html', icon: 'users' },
   { id: 'agenda', label: 'Agenda', fullLabel: 'Agenda', href: '/pages/agenda.html', icon: 'calendar' },
   { id: 'planejamentos', label: 'Planos', fullLabel: 'Planejamentos', href: '/pages/planejamentos.html', icon: 'clipboard' },
@@ -59,6 +74,17 @@ const mounted = { nameNodes: [], initialsNodes: [] };
 
 function resolveSection(pageId) {
   return SECTION_OF[pageId] ?? pageId;
+}
+
+/**
+ * O subitem aberto é o que casa com o endereço atual — CAMINHO E CONSULTA.
+ *
+ * "Alunos ativos" e "Alunos afastados" são a mesma página com `?tipo=` diferente,
+ * então comparar só o pathname destacaria os dois ao mesmo tempo.
+ */
+function isCurrentUrl(href) {
+  const url = new URL(href, window.location.origin);
+  return url.pathname === window.location.pathname && url.search === window.location.search;
 }
 
 /* ============================================================
@@ -210,14 +236,56 @@ function buildUserMenu(user, profile, onLogout) {
    ============================================================ */
 
 function buildSidebar(activeSection, onClose, onLogout) {
-  const links = NAV_ITEMS.map((item) =>
-    el('a', {
+  const links = NAV_ITEMS.flatMap((item) => {
+    const link = el('a', {
       class: 'sidebar__link',
       href: item.href,
       'aria-current': item.id === activeSection ? 'page' : null,
       html: `${icon(item.icon, 20)}<span>${item.fullLabel}</span>`,
-    }),
-  );
+    });
+
+    if (!item.children) return [link];
+
+    /* O destaque azul, quando o professor está numa das duas telas, é do subitem
+       aberto — não do item pai, que virou o título deles. Em uma página de
+       detalhe (o perfil de um aluno), nenhum subitem casa com o endereço, e o
+       destaque continua no pai. */
+    const onChild = item.children.some((child) => isCurrentUrl(child.href));
+    if (onChild) link.removeAttribute('aria-current');
+
+    const subnavId = `subnav-${item.id}`;
+
+    const subnav = el('div', {
+      class: `sidebar__subnav${onChild ? '' : ' hidden'}`,
+      id: subnavId,
+    }, item.children.map((child) =>
+      el('a', {
+        class: 'sidebar__link sidebar__sublink',
+        href: child.href,
+        'aria-current': isCurrentUrl(child.href) ? 'page' : null,
+        text: child.label,
+      }),
+    ));
+
+    /* Recolhido por padrão, ABERTO quando o professor já está dentro de um dos
+       subitens: esconder a lista bem na hora em que ela diz onde ele está seria
+       esconder a resposta. */
+    const toggle = el('button', {
+      type: 'button',
+      class: 'sidebar__toggle',
+      'aria-expanded': onChild ? 'true' : 'false',
+      'aria-controls': subnavId,
+      'aria-label': `Mostrar as telas de ${item.fullLabel}`,
+      html: icon('chevronDown', 18),
+      onclick: () => {
+        const willOpen = subnav.classList.contains('hidden');
+        subnav.classList.toggle('hidden', !willOpen);
+        toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      },
+    });
+
+    return [el('div', { class: 'sidebar__row' }, [link, toggle]), subnav];
+  });
 
   return el('aside', { class: 'sidebar', id: 'app-sidebar' }, [
     el('div', { class: 'sidebar__brand' }, [

@@ -211,7 +211,7 @@ export async function listClassStudents(userId, classId) {
   return cachedRead(cacheKey(userId, 'class-students', classId), async () => {
     const { data, error } = await supabase
       .from('class_students')
-      .select('id, active, student_id, days_of_week, students (id, name, category, phone, guardian_name)')
+      .select('id, active, student_id, days_of_week, students (id, name, category, student_type, phone, guardian_name)')
       .eq('user_id', userId)
       .eq('class_id', classId)
       .eq('active', true);

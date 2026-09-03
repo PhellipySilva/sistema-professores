@@ -1,7 +1,7 @@
 /* Listagem de alunos (spec, seções 8 e 9). */
 
 import { handleError, initPage } from '../app.js';
-import { deleteStudent, listStudents, updateStudent } from '../api/students.js';
+import { deleteStudent, listStudents, setStudentOnLeave, updateStudent } from '../api/students.js';
 import { listPaymentsSince } from '../api/payments.js';
 import { createClass, listClasses, listClassesOfStudent } from '../api/classes.js';
 import { confirmDialog } from '../components/confirm-dialog.js';
@@ -16,13 +16,30 @@ import {
 } from '../financeiro/financeiro.js';
 import { createStudentWithEnrollment } from './cadastro.js';
 import { notifyVacancy } from '../lista-espera/notificacoes.js';
-import { $, el, render } from '../utils/dom.js';
-import { openStudentModal, searchBar, studentCard } from './alunos-ui.js';
+import { $, el, getQueryParam, render } from '../utils/dom.js';
+import {
+  NO_STUDENT_FILTERS,
+  countStudentFilters,
+  filterButton,
+  matchesStudentFilters,
+  openStudentFilterModal,
+  openStudentModal,
+  searchBar,
+  studentCard,
+  studentsOverview,
+} from './alunos-ui.js';
+import { formatLevel, formatStudentType } from '../utils/formatters.js';
 
 const { user } = await initPage('alunos');
 
 const content = $('#page-content');
 const actions = $('#page-actions');
+
+/* ?tipo=afastados é o subitem "Alunos afastados" do menu (ver NAV_ITEMS em
+   components/layout.js). Mesma tela, mesmo código, mesma listagem — o que muda
+   é qual dos dois grupos aparece. Uma página nova só para mostrar os mesmos
+   cards seria a mesma coisa escrita duas vezes. */
+const showingOnLeave = getQueryParam('tipo') === 'afastados';
 
 /* Estado da tela. Lista pequena: a busca filtra em memória, sem ida ao servidor
    a cada tecla (spec, seção 42). */
@@ -30,17 +47,35 @@ let students = [];
 let paymentsByStudent = new Map();
 let classes = [];
 let searchTerm = '';
+let filters = { ...NO_STUDENT_FILTERS };
 
-actions.append(
-  el('button', {
-    type: 'button',
-    class: 'btn btn--primary',
-    html: `${icon('plus', 18)}<span>Novo aluno</span>`,
-    onclick: () => openCreateModal(),
-  }),
-);
+if (showingOnLeave) {
+  document.title = 'Alunos afastados · MatchPhoint';
+  $('#page-title').textContent = 'Alunos afastados';
+
+  const subtitle = $('#page-subtitle');
+  subtitle.textContent = 'Fora das aulas por enquanto, com intenção de voltar.';
+  subtitle.classList.remove('hidden');
+}
+
+renderActions();
 
 await loadStudents();
+
+/* O botão "Filtrar" carrega a contagem do que está ligado, então o cabeçalho é
+   remontado sempre que os filtros mudam. São dois botões: não vale um render
+   parcial só para isto. */
+function renderActions() {
+  render(actions, [
+    filterButton({ filters, onClick: () => openFilters() }),
+    el('button', {
+      type: 'button',
+      class: 'btn btn--primary',
+      html: `${icon('plus', 18)}<span>Novo aluno</span>`,
+      onclick: () => openCreateModal(),
+    }),
+  ]);
+}
 
 /* ============================================================
    Carregamento
@@ -58,7 +93,9 @@ async function loadStudents() {
       listClasses(user.id),
     ]);
 
-    students = studentList;
+    // Afastado não é excluído: continua no banco, continua com histórico e
+    // financeiro. O que a tela faz é mostrar um grupo de cada vez.
+    students = studentList.filter((student) => Boolean(student.on_leave) === showingOnLeave);
     paymentsByStudent = groupPaymentsByStudent(payments);
     classes = classList;
     renderList();
@@ -81,13 +118,22 @@ async function loadStudents() {
 function renderList() {
   if (students.length === 0) {
     render(content, [
-      emptyState({
-        iconName: 'user',
-        title: 'Você ainda não possui alunos cadastrados.',
-        message: 'Cadastre o primeiro aluno para começar a montar suas turmas.',
-        actionLabel: 'Adicionar aluno',
-        onAction: () => openCreateModal(),
-      }),
+      showingOnLeave
+        ? emptyState({
+            iconName: 'user',
+            title: 'Nenhum aluno afastado.',
+            message:
+              'Quando um aluno parar por um tempo, use o botão de afastar no card dele: '
+              + 'ele sai de "Alunos ativos" e fica guardado aqui, com o cadastro inteiro. '
+              + 'Enquanto estiver afastado, não entra na cobrança nem nos indicadores.',
+          })
+        : emptyState({
+            iconName: 'user',
+            title: 'Você ainda não possui alunos cadastrados.',
+            message: 'Cadastre o primeiro aluno para começar a montar suas turmas.',
+            actionLabel: 'Adicionar aluno',
+            onAction: () => openCreateModal(),
+          }),
     ]);
     return;
   }
@@ -95,6 +141,9 @@ function renderList() {
   const filtered = filterStudents();
 
   const children = [
+    studentsOverview(students, {
+      title: showingOnLeave ? 'Alunos afastados' : 'Alunos ativos',
+    }),
     searchBar({
       value: searchTerm,
       onInput: (value) => {
@@ -102,11 +151,50 @@ function renderList() {
         renderResults();
       },
     }),
+    activeFilterBar(),
     el('div', { id: 'students-results' }),
   ];
 
   render(content, children);
   renderResults(filtered);
+}
+
+/**
+ * Os filtros ligados, cada um um chip que se desliga no clique.
+ *
+ * Sem filtro nenhum, a barra não existe — nada de uma faixa vazia ocupando o
+ * topo da lista. Com filtro, ele fica à vista e sai no mesmo toque em que
+ * entrou, sem passar pelo modal de novo.
+ */
+function activeFilterBar() {
+  if (countStudentFilters(filters) === 0) return null;
+
+  const chips = [];
+
+  const chip = (label, clear) =>
+    el('button', {
+      type: 'button',
+      class: 'filter-chip',
+      'aria-pressed': 'true',
+      'aria-label': `Remover filtro ${label}`,
+      onclick: () => {
+        filters = { ...filters, ...clear };
+        renderList();
+      },
+    }, [el('span', { text: label }), el('span', { class: 'filter-chip__count', text: '×' })]);
+
+  if (filters.category) {
+    chips.push(chip(`Categoria ${formatLevel(filters.category)}`, { category: null }));
+  }
+  if (filters.student_type) {
+    chips.push(chip(formatStudentType(filters.student_type), { student_type: null }));
+  }
+
+  return el('div', {
+    class: 'filter-bar',
+    role: 'group',
+    'aria-label': 'Filtros ativos',
+  }, chips);
 }
 
 function renderResults(list = filterStudents()) {
@@ -119,7 +207,9 @@ function renderResults(list = filterStudents()) {
       emptyState({
         iconName: 'search',
         title: 'Nenhum aluno encontrado',
-        message: `Nada corresponde a "${searchTerm}".`,
+        message: searchTerm
+          ? `Nada corresponde a "${searchTerm}".`
+          : 'Nenhum aluno com os filtros escolhidos.',
       }),
     );
     return;
@@ -129,6 +219,7 @@ function renderResults(list = filterStudents()) {
     studentCard(student, statusOf(student), {
       onEdit: openEditModal,
       onDelete: confirmDelete,
+      onToggleLeave: toggleLeave,
     }),
   );
 
@@ -140,15 +231,27 @@ function renderResults(list = filterStudents()) {
 
 function filterStudents() {
   const term = searchTerm.trim().toLowerCase();
-  if (!term) return students;
-
   const digits = term.replace(/\D/g, '');
 
   return students.filter((student) => {
+    if (!matchesStudentFilters(student, filters)) return false;
+    if (!term) return true;
+
     if (student.name.toLowerCase().includes(term)) return true;
     if (digits && student.phone?.includes(digits)) return true;
     if (student.guardian_name?.toLowerCase().includes(term)) return true;
     return false;
+  });
+}
+
+function openFilters() {
+  openStudentFilterModal({
+    filters,
+    onApply: (chosen) => {
+      filters = chosen;
+      renderActions();
+      renderList();
+    },
   });
 }
 
@@ -212,6 +315,32 @@ function openEditModal(student) {
       await loadStudents();
     },
   });
+}
+
+/**
+ * Move o aluno entre "Geral" e "Alunos afastados".
+ *
+ * Sem confirmação de propósito: é reversível pelo mesmo botão, e pedir "tem
+ * certeza?" para uma ação que se desfaz num toque é a burocracia que o pedido
+ * mandou não criar. O aluno some da lista atual porque passou a pertencer à
+ * outra — o toast diz para onde ele foi.
+ */
+async function toggleLeave(student) {
+  const goingOnLeave = !student.on_leave;
+
+  try {
+    await setStudentOnLeave(user.id, student.id, goingOnLeave);
+  } catch (error) {
+    toast.error(handleError(error, 'Não foi possível mudar a situação do aluno. Tente novamente.'));
+    return;
+  }
+
+  toast.success(
+    goingOnLeave
+      ? `${student.name} foi para "Alunos afastados" e saiu da cobrança.`
+      : `${student.name} voltou para "Alunos ativos".`,
+  );
+  await loadStudents();
 }
 
 async function confirmDelete(student) {

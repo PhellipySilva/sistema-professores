@@ -640,6 +640,40 @@
   color: var(--color-adulto);
 }
 
+/* ---------- Categoria do aluno: o nível ----------
+   Mesma mecânica dos dias da semana: a cor entra por .level-<letra>, e o selo
+   em si não sabe nada sobre ela. */
+
+.badge--level {
+  background-color: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.level-e   { background-color: var(--color-level-e-soft);   color: var(--color-level-e); }
+.level-d   { background-color: var(--color-level-d-soft);   color: var(--color-level-d); }
+.level-c   { background-color: var(--color-level-c-soft);   color: var(--color-level-c); }
+.level-b   { background-color: var(--color-level-b-soft);   color: var(--color-level-b); }
+.level-a   { background-color: var(--color-level-a-soft);   color: var(--color-level-a); }
+.level-pro { background-color: var(--color-level-pro-soft); color: var(--color-level-pro); }
+
+/* Ponto do filtro na cor do nível — o mesmo recurso do filtro por dia. */
+.filter-chip .level-e   { color: var(--color-level-e); }
+.filter-chip .level-d   { color: var(--color-level-d); }
+.filter-chip .level-c   { color: var(--color-level-c); }
+.filter-chip .level-b   { color: var(--color-level-b); }
+.filter-chip .level-a   { color: var(--color-level-a); }
+.filter-chip .level-pro { color: var(--color-level-pro); }
+
+.filter-chip[aria-pressed='true'] .level-e,
+.filter-chip[aria-pressed='true'] .level-d,
+.filter-chip[aria-pressed='true'] .level-c,
+.filter-chip[aria-pressed='true'] .level-b,
+.filter-chip[aria-pressed='true'] .level-a,
+.filter-chip[aria-pressed='true'] .level-pro {
+  color: var(--color-text-inverse);
+}
+
 /* ---------- Dia da semana ----------
    A cor entra por `.day-N`, que é a única coisa que muda entre um dia e outro.
    Um dia novo seria uma linha aqui e duas variáveis — nada de repetir a regra
@@ -1113,6 +1147,108 @@
 .section__title--sticky {
   margin-top: var(--space-4);
   margin-bottom: 0;
+}
+
+/* ============================================================
+   Card de planejamento — a cor da categoria
+   ============================================================ */
+
+/* Fundo e borda, e MAIS NADA: tamanho, espaçamento, tipografia e conteúdo
+   continuam os do .card comum. A cor entra por .plan-card--<letra>, do mesmo
+   jeito que .day-N pinta o card da turma — os valores moram em variables.css.
+
+   As classes NÃO reaproveitam .level-<letra> (o selo) de propósito: aquela
+   regra também define color, e aqui a cor do texto não pode mudar. */
+
+.plan-card--e   { background-color: var(--color-plan-e-bg);   border-color: var(--color-plan-e-border); }
+.plan-card--d   { background-color: var(--color-plan-d-bg);   border-color: var(--color-plan-d-border); }
+.plan-card--c   { background-color: var(--color-plan-c-bg);   border-color: var(--color-plan-c-border); }
+.plan-card--b   { background-color: var(--color-plan-b-bg);   border-color: var(--color-plan-b-border); }
+.plan-card--a   { background-color: var(--color-plan-a-bg);   border-color: var(--color-plan-a-border); }
+.plan-card--pro { background-color: var(--color-plan-pro-bg); border-color: var(--color-plan-pro-border); }
+
+/* ---------- O mesmo card dentro da grade ----------
+   Item de grade nasce com min-width: auto e se recusa a ficar menor que o
+   próprio conteúdo — é o que fazia o card de duas colunas passar da largura da
+   tela no celular. Com min-width: 0 ele cabe, e o texto quebra em vez de
+   empurrar. */
+
+.grid-cards--2 > .plan-card {
+  min-width: 0;
+}
+
+.plan-card .card__title {
+  overflow-wrap: break-word;
+}
+
+/* Selo é uma linha só por padrão (white-space: nowrap). Numa coluna estreita,
+   "Compartilhado por Professor Erick" precisa poder quebrar. */
+.grid-cards--2 .plan-card .badge {
+  white-space: normal;
+}
+
+/* Na grade, a descrição para em três linhas e o card inteiro vira o caminho
+   para o texto completo (ver openPlanViewModal, em planejamentos.js). Na lista
+   nada disso vale: lá o card já mostra tudo. */
+.grid-cards--2 .plan-card__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.grid-cards--2 .plan-card--clickable {
+  cursor: pointer;
+}
+
+/* ============================================================
+   Resumo de alunos (contagem por categoria e por tipo)
+   ============================================================ */
+
+/* Duas colunas quando cabem, uma quando não cabem: são dois blocos de contagem
+   independentes, e no celular eles se empilham sem media query. */
+.overview__blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+}
+
+.overview__blocks > * {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.overview__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+/* Selo + número numa cápsula só: a cor identifica a categoria, o número
+   responde "quantos". Sem cor própria — quem colore é o selo de dentro. */
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface);
+}
+
+.count-pill__value {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+}
+
+/* Categoria sem ninguém continua na fila, apagada: some do olhar sem sumir da
+   escala. */
+.count-pill--empty {
+  opacity: 0.55;
 }
 
 /* ============================================================

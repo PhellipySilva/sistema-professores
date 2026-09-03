@@ -16,7 +16,10 @@ import {
 import {
   formatOccupancy, freeSlots, groupWaitlistByClass, hasVacancy, isFull, wantsClass,
 } from '../js/lista-espera/vagas.js';
-import { scheduleShort } from '../js/turmas/turmas-ui.js';
+import { earliestStartTime, scheduleShort, sortClassesByTime } from '../js/turmas/turmas-ui.js';
+import { matchesStudentFilters, summarizeStudents } from '../js/alunos/alunos-ui.js';
+import { formatLevel, formatStudentType, teacherLabel } from '../js/utils/formatters.js';
+import { validateGuardianName, validateLevel, validateStudentType } from '../js/utils/validators.js';
 import { isConflict } from '../js/offline/conflitos.js';
 import { timestampToLocalISODate } from '../js/utils/dates.js';
 import { parseCurrencyToCents, formatCurrency, formatPhone, whatsappLink } from '../js/utils/formatters.js';
@@ -246,6 +249,17 @@ eq('patrocinado nao e cobravel', isBillable(patrocinado), false);
 eq('pagante com mensalidade e vencimento e cobravel', isBillable(pagante), true);
 eq('sem dia de vencimento nao e cobravel', isBillable({ monthly_fee_cents: 15000 }), false);
 
+/* ---------- ALUNO AFASTADO ---------- */
+/* Afastado sai da cobranca como o patrocinado — e volta inteiro quando voltar. */
+const afastado = { ...pagante, on_leave: true };
+
+eq('afastado nao e cobravel', isBillable(afastado), false);
+eq('voltando das ferias, volta a ser cobravel', isBillable({ ...afastado, on_leave: false }), true);
+eq('afastado sai do previsto do mes',
+  monthlySummary([{ ...pagante, id: 'Z', on_leave: true }], [], '2026-08-17').expectedCents, 0);
+eq('afastado nao conta como pagante',
+  monthlySummary([{ ...pagante, id: 'Z', on_leave: true }], [], '2026-08-17').payingCount, 0);
+
 /* ---------- RESUMO FINANCEIRO DO MES ---------- */
 const elenco = [
   { id: 'A', sponsored: false, monthly_fee_cents: 15000, due_day: 10, created_at: '2026-01-01T12:00:00.000Z' },
@@ -348,6 +362,72 @@ eq('horarios diferentes mostram so os dias', scheduleShort([
 ]), 'Seg/Qua');
 eq('sem grade nao inventa horario', scheduleShort([]), '');
 
+/* ---------- ORDEM POR HORARIO (turmas e planejamentos) ---------- */
+const turma = (name, schedules) => ({ name, class_schedules: schedules });
+const manha = turma('Manha', [{ day_of_week: 6, start_time: '09:00:00', end_time: '10:00:00' }]);
+const tarde = turma('Tarde', [{ day_of_week: 1, start_time: '17:00:00', end_time: '18:00:00' }]);
+const tardeB = turma('Aula B', [{ day_of_week: 1, start_time: '17:00:00', end_time: '18:00:00' }]);
+const semGrade = turma('Sem horario', []);
+const doisDias = turma('Dois dias', [
+  { day_of_week: 3, start_time: '19:00:00', end_time: '20:00:00' },
+  { day_of_week: 1, start_time: '08:00:00', end_time: '09:00:00' },
+]);
+
+eq('horario mais cedo da grade', earliestStartTime(doisDias.class_schedules), '08:00:00');
+eq('sem grade nao tem horario', earliestStartTime([]), null);
+eq('turmas do mais cedo para o mais tarde',
+  sortClassesByTime([tarde, manha, doisDias]).map((t) => t.name),
+  ['Dois dias', 'Manha', 'Tarde']);
+eq('turma sem horario vai para o fim',
+  sortClassesByTime([semGrade, tarde]).map((t) => t.name),
+  ['Tarde', 'Sem horario']);
+eq('empate de horario desempata pelo nome',
+  sortClassesByTime([tarde, tardeB]).map((t) => t.name),
+  ['Aula B', 'Tarde']);
+eq('ordenar nao mexe na lista original',
+  (() => { const lista = [tarde, manha]; sortClassesByTime(lista); return lista[0].name; })(),
+  'Tarde');
+
+/* ---------- CATEGORIA (nivel) E TIPO DO ALUNO ---------- */
+const alunoFiltro = (category, student_type) => ({ category, student_type });
+
+eq('sem filtro, todo aluno passa', matchesStudentFilters(alunoFiltro('B', 'adulto')), true);
+eq('filtro de categoria',
+  matchesStudentFilters(alunoFiltro('B', 'adulto'), { category: 'B', student_type: null }), true);
+eq('filtro de categoria que nao casa',
+  matchesStudentFilters(alunoFiltro('E', 'adulto'), { category: 'B', student_type: null }), false);
+eq('filtro de tipo',
+  matchesStudentFilters(alunoFiltro('E', 'kids'), { category: null, student_type: 'kids' }), true);
+eq('os dois filtros valem juntos',
+  matchesStudentFilters(alunoFiltro('E', 'kids'), { category: 'E', student_type: 'adulto' }), false);
+
+/* ---------- RESUMO DE ALUNOS (dashboard da tela de alunos) ---------- */
+const elencoResumo = [
+  alunoFiltro('E', 'kids'),
+  alunoFiltro('E', 'adulto'),
+  alunoFiltro('B', 'adulto'),
+  alunoFiltro('PRO', 'kids'),
+];
+const resumoAlunos = summarizeStudents(elencoResumo);
+const contagemDe = (nivel) => resumoAlunos.byLevel.find((item) => item.level === nivel).count;
+
+eq('resumo conta o total', resumoAlunos.total, 4);
+eq('resumo mantem as seis categorias', resumoAlunos.byLevel.map((item) => item.level), ['E', 'D', 'C', 'B', 'A', 'PRO']);
+eq('resumo conta por categoria', [contagemDe('E'), contagemDe('B'), contagemDe('PRO')], [2, 1, 1]);
+eq('categoria sem ninguem fica em zero', contagemDe('D'), 0);
+eq('resumo conta por tipo', resumoAlunos.byType, [{ type: 'kids', count: 2 }, { type: 'adulto', count: 2 }]);
+eq('resumo de lista vazia nao quebra', summarizeStudents([]).total, 0);
+
+eq('nivel valido', validateLevel('PRO'), null);
+eq('nivel antigo nao vale mais', validateLevel('adulto'), 'Selecione uma categoria.');
+eq('tipo valido', validateStudentType('kids'), null);
+eq('tipo invalido', validateStudentType('E'), 'Selecione o tipo de aluno.');
+eq('responsavel obrigatorio para Kids',
+  validateGuardianName('', 'kids'), 'Informe o nome do responsável.');
+eq('responsavel opcional para Adulto', validateGuardianName('', 'adulto'), null);
+eq('nivel desconhecido nao vira texto', formatLevel('adulto'), '');
+eq('tipo do aluno legivel', formatStudentType('kids'), 'Kids');
+
 /* ---------- CONFLITO DE SINCRONIZACAO (offline) ---------- */
 const marcacao = (base, op = 'upsert') => ({ op, baseUpdatedAt: base });
 const linha = (updatedAt) => ({ status: 'present', updated_at: updatedAt });
@@ -365,6 +445,16 @@ eq('apagar o que ja sumiu nao e conflito',
 eq('gravar sobre linha apagada por outro: conflito',
   isConflict(marcacao('2026-08-20T10:00:00Z'), null), true);
 eq('sem pendencia nenhuma nao quebra', isConflict(undefined, null), false);
+
+/* ---------- NOME DO PROFESSOR (compartilhamento) ---------- */
+/* O nome do cadastro aparece inteiro; e-mail nao aparece de jeito nenhum. */
+eq('nome cadastrado aparece inteiro', teacherLabel('Erick Souza'), 'Erick Souza');
+eq('nome de uma palavra so', teacherLabel('Phellipy'), 'Phellipy');
+eq('nome composto nao e abreviado', teacherLabel('Ana Paula de Souza'), 'Ana Paula de Souza');
+eq('espacos das pontas somem', teacherLabel('  Sidney Lima  '), 'Sidney Lima');
+eq('e-mail nao vira nome, nem em pedaco', teacherLabel('sidney.souza@escola.com'), 'Professor sem nome');
+eq('sem nome, o rotulo de reserva', teacherLabel(''), 'Professor sem nome');
+eq('nome ausente nao quebra', teacherLabel(undefined), 'Professor sem nome');
 
 /* ---------- CONTATO ---------- */
 eq('whatsapp com DDD ganha o 55', whatsappLink('82999998888'), 'https://wa.me/5582999998888');

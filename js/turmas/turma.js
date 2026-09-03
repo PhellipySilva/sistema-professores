@@ -18,7 +18,7 @@ import { showLoading } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, getQueryParam, render } from '../utils/dom.js';
 import { categoryBadge } from '../components/badges.js';
-import { formatCategory, formatPhone, pluralize, whatsappLink } from '../utils/formatters.js';
+import { formatPhone, formatStudentType, pluralize, whatsappLink } from '../utils/formatters.js';
 import { formatDateShortBR, formatTime, formatTimeRange, todayISO, weekdayName } from '../utils/dates.js';
 import {
   openAddStudentModal,
@@ -187,7 +187,7 @@ function studentsSection(turma, enrolled, allStudents) {
     ? [el('p', { class: 'text-muted text-sm', text: 'Nenhum aluno matriculado nesta turma.' })]
     : enrolled.map((student) => {
         const meta = [
-          formatCategory(student.category),
+          formatStudentType(student.student_type),
           student.phone ? formatPhone(student.phone) : null,
         ].filter(Boolean);
 

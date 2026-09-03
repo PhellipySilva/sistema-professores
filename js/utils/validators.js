@@ -7,7 +7,7 @@
  *   if (error) { ...mostra o error... }
  */
 
-import { parseCurrencyToCents } from './formatters.js';
+import { LEVELS, parseCurrencyToCents } from './formatters.js';
 
 export function validateRequired(value, fieldLabel) {
   if (!value || value.trim() === '') return `${fieldLabel} é obrigatório.`;
@@ -20,14 +20,32 @@ export function validateName(name) {
   return null;
 }
 
+/** Categoria da TURMA: Kids ou Adulto. O aluno usa validateLevel + validateStudentType. */
 export function validateCategory(category) {
   if (!['kids', 'adulto'].includes(category)) return 'Selecione uma categoria.';
   return null;
 }
 
-/** O responsável só é obrigatório para alunos da categoria Kids. */
-export function validateGuardianName(guardianName, category) {
-  if (category === 'kids' && (!guardianName || guardianName.trim() === '')) {
+/** Categoria do aluno e do planejamento: o nível E, D, C, B, A ou PRO. */
+export function validateLevel(level) {
+  if (!LEVELS.includes(level)) return 'Selecione uma categoria.';
+  return null;
+}
+
+/** Tipo do aluno: Adulto ou Kids — o que a categoria queria dizer antes. */
+export function validateStudentType(type) {
+  if (!['kids', 'adulto'].includes(type)) return 'Selecione o tipo de aluno.';
+  return null;
+}
+
+/**
+ * O responsável só é obrigatório para alunos do tipo Kids.
+ *
+ * A regra é a mesma de sempre; o que mudou foi de onde vem a resposta: era a
+ * categoria do aluno, agora é o tipo dele (ver migration 0009).
+ */
+export function validateGuardianName(guardianName, studentType) {
+  if (studentType === 'kids' && (!guardianName || guardianName.trim() === '')) {
     return 'Informe o nome do responsável.';
   }
   return null;

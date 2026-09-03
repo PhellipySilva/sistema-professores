@@ -48,15 +48,18 @@ begin
   -- created_at é jogado 3 meses para trás de propósito: a cobrança de um aluno
   -- só começa no mês da matrícula, então alunos criados "hoje" nunca ficariam
   -- em atraso e o seed não conseguiria demonstrar o status vermelho.
+  -- `category` é o NÍVEL (E…PRO) e `student_type` é Kids/Adulto — ver a
+  -- migration 0009. Os seis alunos cobrem níveis diferentes de propósito, para
+  -- o filtro da tela de alunos ter o que filtrar.
   insert into public.students
-    (user_id, name, phone, category, guardian_name, monthly_fee_cents, due_day, created_at)
+    (user_id, name, phone, category, student_type, guardian_name, monthly_fee_cents, due_day, created_at)
   values
-    (v_user_id, '[teste] João Silva',    '82999990001', 'adulto', null,           15000, 10, now() - interval '3 month'),
-    (v_user_id, '[teste] Maria Souza',   '82999990002', 'kids',   'Ana Souza',    12000, 10, now() - interval '3 month'),
-    (v_user_id, '[teste] Pedro Almeida', '82999990003', 'adulto', null,           15000,  5, now() - interval '3 month'),
-    (v_user_id, '[teste] Ana Costa',     '82999990004', 'kids',   'Carlos Costa', 12000, 15, now() - interval '3 month'),
-    (v_user_id, '[teste] Lucas Rocha',   '82999990005', 'adulto', null,           18000, 20, now() - interval '3 month'),
-    (v_user_id, '[teste] Beatriz Lima',  '82999990006', 'adulto', null,            null, null, now() - interval '3 month');
+    (v_user_id, '[teste] João Silva',    '82999990001', 'C',   'adulto', null,           15000, 10, now() - interval '3 month'),
+    (v_user_id, '[teste] Maria Souza',   '82999990002', 'E',   'kids',   'Ana Souza',    12000, 10, now() - interval '3 month'),
+    (v_user_id, '[teste] Pedro Almeida', '82999990003', 'B',   'adulto', null,           15000,  5, now() - interval '3 month'),
+    (v_user_id, '[teste] Ana Costa',     '82999990004', 'D',   'kids',   'Carlos Costa', 12000, 15, now() - interval '3 month'),
+    (v_user_id, '[teste] Lucas Rocha',   '82999990005', 'A',   'adulto', null,           18000, 20, now() - interval '3 month'),
+    (v_user_id, '[teste] Beatriz Lima',  '82999990006', 'PRO', 'adulto', null,            null, null, now() - interval '3 month');
 
   select id into v_joao  from public.students where user_id = v_user_id and name = '[teste] João Silva';
   select id into v_maria from public.students where user_id = v_user_id and name = '[teste] Maria Souza';
@@ -164,16 +167,16 @@ begin
   ---------------------------------------------------------------------------
   -- Planejamentos
   ---------------------------------------------------------------------------
-  insert into public.lesson_plans (user_id, title, description, lesson_date) values
+  insert into public.lesson_plans (user_id, title, description, lesson_date, category) values
     (v_user_id, '[teste] Trabalho de devolução',
      'Trabalhar devolução cruzada, deslocamento lateral e construção de ponto.',
-     v_today),
+     v_today, 'C'),
     (v_user_id, '[teste] Saque e voleio',
      'Sequência de saque por baixo, subida à rede e finalização de voleio.',
-     v_today + 2),
+     v_today + 2, 'B'),
     (v_user_id, '[teste] Fundamentos Kids',
      'Coordenação, equilíbrio e contato com a bola. Jogos lúdicos.',
-     v_today - 3);
+     v_today - 3, 'E');
 
   raise notice 'Seed concluído para o usuário %', v_user_id;
 end $$;

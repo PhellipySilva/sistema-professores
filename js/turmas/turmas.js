@@ -9,7 +9,7 @@ import { icon } from '../components/icons.js';
 import { showSkeletons } from '../components/loading.js';
 import { toast } from '../components/toast.js';
 import { $, el, render } from '../utils/dom.js';
-import { classCard, openClassModal, weekdayFilterBar } from './turmas-ui.js';
+import { classCard, openClassModal, sortClassesByTime, weekdayFilterBar } from './turmas-ui.js';
 import { notifyVacancy } from '../lista-espera/notificacoes.js';
 import { weekdayName } from '../utils/dates.js';
 
@@ -122,11 +122,17 @@ function filterBar() {
   });
 }
 
+/* A listagem sai SEMPRE em ordem de horário, do mais cedo para o mais tarde —
+   com ou sem filtro de dia. É a ordem em que o dia do professor acontece, e a
+   única que deixa "o que vem antes" ser lido sem procurar. A consulta continua
+   vindo por nome do servidor; ordenar aqui não custa uma ida a mais. */
 function filteredClasses() {
-  if (dayFilter === null) return allClasses;
+  if (dayFilter === null) return sortClassesByTime(allClasses);
 
-  return allClasses.filter((turma) =>
-    (turma.class_schedules ?? []).some((schedule) => schedule.day_of_week === dayFilter),
+  return sortClassesByTime(
+    allClasses.filter((turma) =>
+      (turma.class_schedules ?? []).some((schedule) => schedule.day_of_week === dayFilter),
+    ),
   );
 }
 

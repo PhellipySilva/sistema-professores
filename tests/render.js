@@ -6,14 +6,17 @@
  *
  * Não substitui abrir o sistema — mas se algo aqui quebra, está quebrado. */
 
-import { studentCard, openStudentModal, studentSummaryCard, searchBar } from '../js/alunos/alunos-ui.js';
+import {
+  filterButton, openStudentFilterModal, openStudentModal, searchBar, studentCard,
+  studentSummaryCard, studentsOverview,
+} from '../js/alunos/alunos-ui.js';
 import { attendanceHistorySection, makeupHistorySection, summarizeAttendanceByMonth } from '../js/alunos/aluno-historico.js';
 import { classCard, openClassModal, scheduleSummary } from '../js/turmas/turmas-ui.js';
 import { buildStudentPicker } from '../js/turmas/aluno-picker.js';
 import { attendanceRow, attendanceSummary, countStatuses } from '../js/agenda/frequencia.js';
 import { paymentHistorySection, paymentBadge } from '../js/financeiro/financeiro-ui.js';
 import { openWaitlistModal, vacancyCard, waitlistGroup } from '../js/lista-espera/lista-espera-ui.js';
-import { categoryBadge, categoryVariant, weekdayBadges } from '../js/components/badges.js';
+import { categoryBadge, categoryVariant, levelBadge, studentTypeBadge, weekdayBadges } from '../js/components/badges.js';
 import { scheduleTime, weekdayFilterBar } from '../js/turmas/turmas-ui.js';
 import { groupWaitlistByClass } from '../js/lista-espera/vagas.js';
 import { emptyState, errorState } from '../js/components/empty-state.js';
@@ -44,14 +47,16 @@ const checkAsync = async (name, fn) => {
 const has = (node, text) => (node.textContent.includes(text) ? true : `não achou "${text}" em: ${node.textContent.slice(0, 120)}`);
 
 /* ---------- Dados falsos ---------- */
+/* `category` é o NÍVEL e `student_type` é Kids/Adulto — migration 0009. */
 const aluno = {
-  id: 'a1', name: 'João Silva', phone: '82999998888', category: 'adulto',
-  guardian_name: null, monthly_fee_cents: 15000, due_day: 10,
+  id: 'a1', name: 'João Silva', phone: '82999998888', category: 'C',
+  student_type: 'adulto', guardian_name: null, monthly_fee_cents: 15000, due_day: 10,
 };
 const alunoKids = {
-  id: 'a2', name: 'Maria Souza', phone: '82988887777', category: 'kids',
-  guardian_name: 'Ana Souza', monthly_fee_cents: 12000, due_day: 10,
+  id: 'a2', name: 'Maria Souza', phone: '82988887777', category: 'E',
+  student_type: 'kids', guardian_name: 'Ana Souza', monthly_fee_cents: 12000, due_day: 10,
 };
+const alunoAfastado = { ...aluno, id: 'a8', name: 'Rui Parado', on_leave: true };
 const turma = {
   id: 't1', name: 'Kids Iniciante', category: 'kids', student_count: 4,
   class_schedules: [
@@ -68,7 +73,12 @@ check('studentCard mostra badge Em dia', () => has(studentCard(aluno, 'ok', { on
 check('studentCard mostra badge Atrasado', () => has(studentCard(aluno, 'overdue', { onEdit: noop, onDelete: noop }), 'Atrasado'));
 check('studentCard mostra responsavel de kids', () => has(studentCard(alunoKids, 'ok', { onEdit: noop, onDelete: noop }), 'Responsável: Ana Souza'));
 check('studentCard linka para o perfil', () => studentCard(aluno, 'ok', { onEdit: noop, onDelete: noop }).querySelector('a').getAttribute('href') === '/pages/aluno.html?id=a1' || 'href errado');
+check('studentCard mostra a categoria', () => has(studentCard(aluno, 'ok', { onEdit: noop, onDelete: noop }), 'C'));
+check('studentCard mostra o tipo do aluno', () => has(studentCard(alunoKids, 'ok', { onEdit: noop, onDelete: noop }), 'Kids'));
+check('studentCard marca quem esta afastado', () => has(studentCard(alunoAfastado, 'ok', { onEdit: noop, onDelete: noop, onToggleLeave: noop }), 'Afastado'));
+check('sem onToggleLeave nao aparece botao de afastar', () => studentCard(aluno, 'ok', { onEdit: noop, onDelete: noop }).querySelectorAll('button').length === 2 || 'botao a mais');
 check('studentSummaryCard mostra mensalidade', () => has(studentSummaryCard(aluno, 'ok'), 'R$'));
+check('perfil mostra categoria e tipo', () => has(studentSummaryCard(alunoKids, 'ok'), 'Tipo de aluno'));
 check('searchBar tem input', () => Boolean(searchBar({ onInput: noop }).querySelector('input')) || 'sem input');
 
 /* ---------- Historico ---------- */
@@ -240,7 +250,8 @@ await checkAsync('cadastro entrega payload, turma e mes no onSave', async () => 
   const form = modal.element.querySelector('form');
   form.elements.name.value = 'Carlos Dias';
   form.elements.phone.value = '(82) 91234-5678';
-  form.elements.category.value = 'adulto';
+  form.elements.category.value = 'C';
+  form.elements.student_type.value = 'adulto';
   form.elements.monthly_fee.value = '180,00';
   form.elements.due_day.value = '15';
   form.elements.class_id.value = 't2';
@@ -252,6 +263,8 @@ await checkAsync('cadastro entrega payload, turma e mes no onSave', async () => 
 
   if (!recebido) return 'onSave nao foi chamado';
   if (recebido.payload.name !== 'Carlos Dias') return `nome: ${recebido.payload.name}`;
+  if (recebido.payload.category !== 'C') return `categoria: ${recebido.payload.category}`;
+  if (recebido.payload.student_type !== 'adulto') return `tipo: ${recebido.payload.student_type}`;
   if (recebido.payload.phone !== '82912345678') return `telefone nao normalizado: ${recebido.payload.phone}`;
   if (recebido.payload.monthly_fee_cents !== 18000) return `centavos: ${recebido.payload.monthly_fee_cents}`;
   if (recebido.payload.due_day !== 15) return `due_day: ${recebido.payload.due_day}`;
@@ -271,7 +284,8 @@ await checkAsync('kids sem responsavel e recusado', async () => {
 
   const form = modal.element.querySelector('form');
   form.elements.name.value = 'Bruno Kids';
-  form.elements.category.value = 'kids';
+  form.elements.category.value = 'E';
+  form.elements.student_type.value = 'kids';
   form.elements.guardian_name.value = '';
 
   form.requestSubmit();
@@ -300,7 +314,8 @@ await checkAsync('ultimo pagamento sem mensalidade e recusado', async () => {
 
   const form = modal.element.querySelector('form');
   form.elements.name.value = 'Sem Mensalidade';
-  form.elements.category.value = 'adulto';
+  form.elements.category.value = 'C';
+  form.elements.student_type.value = 'adulto';
   form.elements.monthly_fee.value = '';
   form.elements.last_paid_month.value = form.elements.last_paid_month.options[1].value;
 
@@ -319,9 +334,9 @@ await checkAsync('ultimo pagamento sem mensalidade e recusado', async () => {
 
 /* ---------- Seletor de alunos com dias (turma segunda + quinta) ---------- */
 const alunosDaTurma = [
-  { id: 'a1', name: 'João Silva', category: 'adulto' },
-  { id: 'a2', name: 'Maria Souza', category: 'kids' },
-  { id: 'a3', name: 'Pedro Almeida', category: 'adulto' },
+  { id: 'a1', name: 'João Silva', category: 'C', student_type: 'adulto' },
+  { id: 'a2', name: 'Maria Souza', category: 'E', student_type: 'kids' },
+  { id: 'a3', name: 'Pedro Almeida', category: 'B', student_type: 'adulto' },
 ];
 const SEG_QUI = [1, 4];
 
@@ -547,6 +562,61 @@ check('modal de turma tem campo de vagas', () => {
   return ok || 'valor de vagas errado';
 });
 
+/* ---------- Dashboard da tela de alunos ---------- */
+const resumoNode = studentsOverview([aluno, alunoKids, { ...aluno, id: 'a7' }], { title: 'Alunos ativos' });
+
+check('resumo mostra o titulo do grupo', () => has(resumoNode, 'Alunos ativos'));
+check('resumo mostra as duas leituras', () => has(resumoNode, 'Por categoria') === true && has(resumoNode, 'Por tipo de aluno') === true || 'faltou um bloco');
+check('resumo tem uma capsula por categoria mais as duas de tipo', () => resumoNode.querySelectorAll('.count-pill').length === 8 || 'contagem de capsulas errada');
+check('resumo apaga a categoria vazia', () => resumoNode.querySelectorAll('.count-pill--empty').length === 4 || 'zeros nao foram apagados');
+
+/* ---------- Filtro de alunos ---------- */
+check('botao de filtrar conta os filtros ligados', () =>
+  has(filterButton({ filters: { category: 'B', student_type: 'kids' }, onClick: noop }), '2'));
+
+await checkAsync('filtro devolve categoria e tipo escolhidos', async () => {
+  let aplicado = null;
+
+  const modal = openStudentFilterModal({
+    filters: { category: null, student_type: null },
+    onApply: (chosen) => { aplicado = chosen; },
+  });
+
+  const form = modal.element.querySelector('form');
+  form.elements.category.value = 'B';
+  form.elements.student_type.value = 'kids';
+
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  modal.close();
+
+  if (!aplicado) return 'onApply nao foi chamado';
+  if (aplicado.category !== 'B') return `categoria: ${aplicado.category}`;
+  if (aplicado.student_type !== 'kids') return `tipo: ${aplicado.student_type}`;
+  return true;
+});
+
+await checkAsync('filtro pode ser desligado de volta para todas', async () => {
+  let aplicado = null;
+
+  const modal = openStudentFilterModal({
+    filters: { category: 'B', student_type: 'kids' },
+    onApply: (chosen) => { aplicado = chosen; },
+  });
+
+  const form = modal.element.querySelector('form');
+  form.elements.category.value = '';
+  form.elements.student_type.value = '';
+
+  form.requestSubmit();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  modal.close();
+
+  if (!aplicado) return 'onApply nao foi chamado';
+  if (aplicado.category !== null || aplicado.student_type !== null) return JSON.stringify(aplicado);
+  return true;
+});
+
 /* ---------- Lista de espera ---------- */
 /* Interesses no formato que a API devolve: uma pessoa pode ter vários. */
 const interesseNoite = {
@@ -681,6 +751,10 @@ check('categoria desconhecida cai no neutro', () => categoryVariant('outra') ===
 check('selo de kids usa a classe da cor', () => categoryBadge('kids').classList.contains('badge--kids') || 'classe errada');
 check('selo de adulto usa a classe da cor', () => categoryBadge('adulto').classList.contains('badge--adulto') || 'classe errada');
 check('selo mostra o rotulo legivel', () => has(categoryBadge('kids'), 'Kids'));
+check('selo de categoria usa a classe do nivel', () => levelBadge('PRO').classList.contains('level-pro') || 'classe errada');
+check('selo de categoria mostra a letra', () => has(levelBadge('B'), 'B'));
+check('sem categoria nao existe selo', () => levelBadge(null) === null || 'inventou selo');
+check('selo de tipo reaproveita a cor da categoria da turma', () => studentTypeBadge('kids').classList.contains('badge--kids') || 'classe errada');
 check('selo aceita prefixo para o perfil', () => has(categoryBadge('adulto', { prefix: 'Nível' }), 'Nível: Adulto'));
 
 /* ---------- Dia da semana com cor própria ---------- */
@@ -787,10 +861,10 @@ checkAsync('clicar em Todas devolve null', async () => {
   return recebido === null || 'veio ' + recebido;
 });
 
-/* ---------- Nível no perfil do aluno ---------- */
-check('perfil mostra o nivel do aluno', () => has(studentSummaryCard(aluno, 'ok'), 'Nível'));
-check('nivel usa a cor da categoria', () => Boolean(studentSummaryCard({ ...aluno, category: 'kids' }, 'ok').querySelector('.badge--kids')) || 'sem cor');
-check('listagem de alunos mostra a categoria colorida', () => Boolean(studentCard(aluno, 'ok', { onEdit: noop, onDelete: noop }).querySelector('.badge--adulto')) || 'sem selo');
+/* ---------- Categoria e tipo no perfil do aluno ---------- */
+check('perfil mostra a categoria do aluno', () => has(studentSummaryCard(aluno, 'ok'), 'Categoria'));
+check('tipo do aluno usa a cor de Kids', () => Boolean(studentSummaryCard({ ...aluno, student_type: 'kids' }, 'ok').querySelector('.badge--kids')) || 'sem cor');
+check('listagem de alunos mostra o tipo colorido', () => Boolean(studentCard(aluno, 'ok', { onEdit: noop, onDelete: noop }).querySelector('.badge--adulto')) || 'sem selo');
 check('listagem de alunos mantem o telefone', () => has(studentCard(aluno, 'ok', { onEdit: noop, onDelete: noop }), '(82) 99999-8888'));
 
 /* ---------- Identidade de cor do card do aluno ---------- */
@@ -799,7 +873,7 @@ const cardDe = (student, status = 'ok') => studentCard(student, status, { onEdit
 check('card de aluno kids leva a cor da categoria', () => cardDe(alunoKids).classList.contains('student-card--kids') || 'sem a classe de kids');
 check('card de aluno adulto leva a cor da categoria', () => cardDe(aluno).classList.contains('student-card--adulto') || 'sem a classe de adulto');
 check('kids e adulto nao compartilham a mesma cor', () => !cardDe(alunoKids).classList.contains('student-card--adulto') || 'card de kids marcado como adulto');
-check('categoria desconhecida cai no neutro em vez de quebrar', () => cardDe({ ...aluno, category: 'outra' }).classList.contains('student-card--neutral') || 'sem a reserva neutra');
+check('tipo desconhecido cai no neutro em vez de quebrar', () => cardDe({ ...aluno, student_type: 'outra' }).classList.contains('student-card--neutral') || 'sem a reserva neutra');
 check('patrocinado mantem a cor da categoria dele', () => cardDe(patrocinado, 'sponsored').classList.contains('student-card--adulto') || 'perdeu a cor da categoria');
 check('patrocinado mostra o selo roxo junto com o selo da categoria', () => {
   const card = cardDe(patrocinado, 'sponsored');
@@ -811,7 +885,7 @@ check('atraso continua vermelho num card colorido', () => {
   return (card.classList.contains('student-card--kids') && Boolean(card.querySelector('.badge--danger')))
     || 'a cor do card comeu o estado financeiro';
 });
-check('perfil do aluno usa a mesma cor da listagem', () => studentSummaryCard(alunoKids, 'ok').classList.contains('student-card--kids') || 'perfil sem a cor da categoria');
+check('perfil do aluno usa a mesma cor da listagem', () => studentSummaryCard(alunoKids, 'ok').classList.contains('student-card--kids') || 'perfil sem a cor do tipo');
 check('card do aluno continua sendo um card', () => cardDe(aluno).classList.contains('card') || 'perdeu a classe base');
 
 /* ---------- Resultado ---------- */

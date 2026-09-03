@@ -10,7 +10,7 @@
  */
 
 import { el } from '../utils/dom.js';
-import { formatCategory } from '../utils/formatters.js';
+import { formatCategory, formatLevel, formatStudentType } from '../utils/formatters.js';
 import { weekdayName, weekdayShort } from '../utils/dates.js';
 
 /* ============================================================
@@ -40,6 +40,42 @@ export function categoryBadge(category, { prefix } = {}) {
   return el('span', {
     class: `badge badge--${categoryVariant(category)}`,
     text: prefix ? `${prefix}: ${label}` : label,
+  });
+}
+
+/* ============================================================
+   Tipo do aluno (Adulto / Kids)
+   ============================================================ */
+
+/**
+ * O selo do TIPO do aluno.
+ *
+ * É o mesmo desenho da categoria da turma, e de propósito: Kids continua verde
+ * e Adulto continua azul em toda a tela. O que mudou de lugar foi só o dado —
+ * o tipo saiu de `category` e foi para `student_type` (migration 0009).
+ */
+export function studentTypeBadge(studentType) {
+  return el('span', {
+    class: `badge badge--${categoryVariant(studentType)}`,
+    text: formatStudentType(studentType),
+  });
+}
+
+/* ============================================================
+   Categoria do aluno e do planejamento: o nível
+   ============================================================ */
+
+/* Um nível novo entra na lista LEVELS (utils/formatters.js) e ganha um par de
+   variáveis em css/variables.css. Nada mais precisa mudar. */
+
+/** Selo do nível: E, D, C, B, A, PRO. Sem nível, não há selo — devolve null. */
+export function levelBadge(level) {
+  const label = formatLevel(level);
+  if (!label) return null;
+
+  return el('span', {
+    class: `badge badge--level level-${label.toLowerCase()}`,
+    text: label,
   });
 }
 

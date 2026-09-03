@@ -164,6 +164,47 @@
   .btn__label {
     display: none;
   }
+
+  /* ---------- Grade de planejamentos ----------
+     Em duas colunas num celular, o cabeçalho do card não cabe com o título e os
+     selos lado a lado — a coluna tem cerca de 130px de conteúdo. Aqui eles
+     passam a empilhar, e o card volta a caber inteiro na coluna. Só na grade:
+     na lista o cabeçalho continua exatamente como sempre foi. */
+
+  .grid-cards--2 .plan-card .card__header {
+    flex-wrap: wrap;
+  }
+
+  /* ---------- Lista de espera ----------
+     A linha da fila tem, do lado direito, um selo de situação e até cinco
+     ações (WhatsApp, contatada, matricular, editar, remover). Lado a lado com
+     o nome, isso passa de 360px e empurrava a página inteira para o lado.
+
+     No celular a linha vira duas: dados em cima, selo e ações embaixo, ambos
+     podendo quebrar. As classes são exclusivas da lista de espera — nenhuma
+     outra tela com .list-item muda de comportamento. */
+
+  .list-item--waitlist {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .list-item--waitlist .list-item__actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  /* Os botões de ação da fila mantêm o rótulo: sem ele, "Matricular" viraria um
+     botão vazio (a regra .btn__label acima esconde o texto). */
+  .list-item--waitlist .btn__label {
+    display: inline;
+  }
+
+  /* Cabeçalho de cada fila: o título e o botão "Ver turma" empilham em vez de
+     espremer o nome da turma. */
+  .section--waitlist .section__header {
+    flex-wrap: wrap;
+  }
 }
 
 /* ============================================================

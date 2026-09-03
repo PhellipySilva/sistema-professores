@@ -148,9 +148,16 @@ export function financialStatusLabel(status) {
  * Uma pergunta só, num lugar só: quem soma o previsto, quem lista vencimentos e
  * quem oferece o aluno no modal de pagamento fazem todos a MESMA pergunta —
  * e passam a mudar juntos se a regra mudar.
+ *
+ * O AFASTADO SAI, pelo mesmo motivo do patrocinado: ele não está tendo aula, e
+ * cobrar mês de quem parou é errado antes de ser inconveniente. Sai da conta
+ * enquanto durar o afastamento — o cadastro continua inteiro, e voltar para
+ * "Alunos ativos" devolve a mensalidade dele à previsão sem redigitar nada.
  */
 export function isBillable(student) {
-  return Boolean(!student.sponsored && student.monthly_fee_cents && student.due_day);
+  return Boolean(
+    !student.sponsored && !student.on_leave && student.monthly_fee_cents && student.due_day,
+  );
 }
 
 /** Agrupa uma lista de pagamentos por student_id → array de pagamentos. */

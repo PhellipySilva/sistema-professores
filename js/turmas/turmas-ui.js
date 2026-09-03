@@ -4,7 +4,7 @@ import { el } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
 import { checkboxChips, selectField, showFieldErrors, textField } from '../components/form.js';
 import { openFormModal } from '../components/modal.js';
-import { CATEGORIES, formatCategory } from '../utils/formatters.js';
+import { CATEGORIES, formatStudentType } from '../utils/formatters.js';
 import { categoryBadge, weekdayBadges } from '../components/badges.js';
 import { addMinutesToTime, formatTime, formatWeekdayList, minutesBetween, weekdayShort } from '../utils/dates.js';
 import { validateCategory, validateName } from '../utils/validators.js';
@@ -76,6 +76,54 @@ function capitalize(word) {
 function shortTime(time) {
   const [hour, minute] = formatTime(time).split(':');
   return minute === '00' ? `${Number(hour)}h` : `${Number(hour)}h${minute}`;
+}
+
+/* ============================================================
+   Ordenação por horário
+   ============================================================ */
+
+/**
+ * O horário mais cedo da grade: '18:00:00'. Sem grade, null.
+ *
+ * Comparar `time` do Postgres como TEXTO é seguro — '09:00:00' < '18:00:00'
+ * porque o formato tem largura fixa e zero à esquerda. Converter para minutos
+ * seria trabalho sem ganho.
+ */
+export function earliestStartTime(schedules) {
+  const times = (schedules ?? []).map((schedule) => schedule.start_time).filter(Boolean);
+  if (times.length === 0) return null;
+
+  return times.reduce((earliest, time) => (time < earliest ? time : earliest));
+}
+
+/**
+ * Turmas do horário mais cedo para o mais tarde.
+ *
+ * Empate de horário desempata pelo primeiro dia da semana e depois pelo nome —
+ * duas turmas das 18h precisam sair sempre na mesma ordem, senão a lista muda
+ * de arrumação a cada carregamento. Turma sem horário definido vai para o fim:
+ * ela não tem lugar na linha do tempo do dia.
+ *
+ * Devolve um array NOVO: a lista em memória da página continua na ordem em que
+ * veio do servidor.
+ */
+export function sortClassesByTime(classes) {
+  return [...classes].sort((a, b) => {
+    const timeA = earliestStartTime(a.class_schedules);
+    const timeB = earliestStartTime(b.class_schedules);
+
+    if (timeA !== timeB) {
+      if (timeA === null) return 1;
+      if (timeB === null) return -1;
+      return timeA < timeB ? -1 : 1;
+    }
+
+    const dayA = classDaysOf(a)[0] ?? 7;
+    const dayB = classDaysOf(b)[0] ?? 7;
+    if (dayA !== dayB) return dayA - dayB;
+
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
 }
 
 /* ============================================================
@@ -389,7 +437,7 @@ export function openAddStudentModal({ availableStudents, classDays = [], onSave 
       placeholder: 'Selecione um aluno',
       options: availableStudents.map((student) => ({
         value: student.id,
-        label: `${student.name} · ${formatCategory(student.category)}`,
+        label: `${student.name} · ${formatStudentType(student.student_type)}`,
       })),
     }),
   ];
