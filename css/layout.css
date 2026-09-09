@@ -215,6 +215,228 @@
 }
 
 /* ============================================================
+   Central de notificações (topbar)
+   ============================================================
+   Vizinha do menu do perfil e com o mesmo comportamento: painel ancorado à
+   direita, mesma sombra, mesma animação de entrada. São dois botões colados na
+   mesma barra — desenhá-los diferente faria parecer que vieram de sistemas
+   diferentes. */
+
+.notif {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.notif-trigger {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--tap-target);
+  height: var(--tap-target);
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+  transition: background-color var(--transition-fast);
+}
+
+.notif-trigger:hover {
+  background-color: var(--color-surface-alt);
+}
+
+/* O número de não lidos. Vermelho porque é o único ponto do sistema em que uma
+   contagem pede ação — e some inteiro quando é zero, em vez de mostrar "0". */
+.notif-badge {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 2px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-danger);
+  color: var(--color-text-inverse);
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+}
+
+/* NO CELULAR O PAINEL NÃO É UM MENUZINHO PENDURADO NO SINO.
+   O sino fica a uns 60px da borda direita, e um painel de 340px ancorado nele
+   sairia pela esquerda da tela em qualquer aparelho de 360px — a frase do aviso
+   apareceria cortada. Aqui ele é `fixed` e ocupa a largura inteira, com a mesma
+   margem dos dois lados, logo abaixo da topbar. A partir do tablet
+   (responsive.css) ele volta a ser o menu ancorado, que ali cabe. */
+.notif-panel {
+  position: fixed;
+  inset-block-start: calc(var(--topbar-height) + env(safe-area-inset-top) + var(--space-2));
+  inset-inline: var(--space-3);
+  z-index: var(--z-menu);
+  /* Coluna: o cabeçalho e o rodapé ficam parados e só a lista rola. Sem isso,
+     rolar a lista levaria embora o "Marcar todas como lidas". */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--topbar-height) - var(--space-8));
+  /* dvh desconta a barra de endereço do celular, que o vh ignora. Navegador que
+     não conhece a unidade simplesmente pula esta linha e fica com a de cima. */
+  max-height: calc(100dvh - var(--topbar-height) - var(--space-8));
+  background-color: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  transform-origin: top right;
+  animation: menu-in var(--transition-base);
+}
+
+.notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: var(--space-3);
+  border-block-end: var(--border-width) solid var(--color-border);
+}
+
+.notif-title {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+}
+
+.notif-action {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-primary);
+}
+
+.notif-action:hover {
+  text-decoration: underline;
+}
+
+/* A lista é a única parte que rola: ela ocupa a sobra do painel, e o painel é
+   quem tem altura máxima. `min-height: 0` é o que autoriza um item de flex a
+   encolher abaixo do próprio conteúdo — sem ele a lista empurraria o rodapé
+   para fora da tela em vez de rolar. */
+.notif-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.notif-empty {
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-block-end: var(--border-width) solid var(--color-border);
+  color: var(--color-text);
+  transition: background-color var(--transition-fast);
+}
+
+.notif-item:last-child {
+  border-block-end: none;
+}
+
+.notif-item:hover {
+  background-color: var(--color-surface-alt);
+}
+
+/* Não lido ganha fundo levemente azulado e texto mais forte. Ler não apaga o
+   aviso — só tira o destaque, e ele continua no histórico. */
+.notif-item--unread {
+  background-color: var(--color-primary-soft);
+}
+
+.notif-item--unread .notif-item__text {
+  font-weight: var(--font-weight-medium);
+}
+
+.notif-item__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+}
+
+/* As três situações, nas mesmas cores da dashboard. */
+.notif-item__icon--accent {
+  background-color: var(--color-primary-soft-strong);
+  color: var(--color-primary);
+}
+
+.notif-item__icon--warning {
+  background-color: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.notif-item__icon--danger {
+  background-color: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.notif-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A frase do aviso quebra em duas ou três linhas no celular, e entrelinha de
+   título (1.2) deixa texto corrido apertado. Aqui ela é de parágrafo. */
+.notif-item__text {
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
+  /* Nome longo sem espaço não pode alargar o painel e criar rolagem lateral. */
+  overflow-wrap: anywhere;
+}
+
+.notif-item__meta {
+  margin-block-start: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.notif-item__dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-block-start: 6px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+}
+
+/* Só aparece quando tem o que dizer: permissão ainda não concedida, bloqueada
+   ou navegador sem suporte. Com tudo funcionando, o rodapé não existe. */
+.notif-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: var(--space-3);
+  background-color: var(--color-surface-alt);
+  border-block-start: var(--border-width) solid var(--color-border);
+}
+
+.notif-footer__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.notif-footer__btn {
+  align-self: flex-start;
+}
+
+/* ============================================================
    Sidebar / drawer
    ============================================================
    O MESMO elemento nas duas telas: no desktop fica fixo à vista; no celular

@@ -13,6 +13,7 @@
 import { el } from '../utils/dom.js';
 import { icon } from './icons.js';
 import { connectionIndicator } from './connection.js';
+import { notificationBell } from '../notificacoes/central.js';
 // Importar o arquivo (em vez de escrever o caminho numa string) faz o Vite
 // versionar e copiar a imagem no build — é o mesmo motivo de a fonte entrar por
 // url() relativa no CSS.
@@ -318,7 +319,7 @@ function buildSidebar(activeSection, onClose, onLogout) {
    Topbar
    ============================================================ */
 
-function buildTopbar(onOpenMenu, userMenu) {
+function buildTopbar(onOpenMenu, userMenu, bell) {
   return el('header', { class: 'topbar' }, [
     el('button', {
       type: 'button',
@@ -337,6 +338,10 @@ function buildTopbar(onOpenMenu, userMenu) {
     // O estado da conexão fica ao lado do perfil: é o canto onde o olho já vai
     // procurar informação sobre a sessão, e não disputa espaço com o conteúdo.
     connectionIndicator(),
+    // O sininho entra ANTES do perfil, e não depois: o canto direito extremo é
+    // do menu do usuário em todas as telas do sistema, e trocar essa ordem
+    // mudaria de lugar um botão que o professor já sabe onde fica.
+    bell,
     userMenu,
   ]);
 }
@@ -388,7 +393,12 @@ export function renderLayout({ pageId, user, profile, onLogout }) {
     if (event.key === 'Escape') closeMenu();
   });
 
-  const topbar = buildTopbar(openMenu, buildUserMenu(user, profile, onLogout));
+  /* O sininho só existe com sessão: ele lê os avisos do professor logado, e
+     sem `user` não haveria de quem. É a mesma condição que já vale para o menu
+     do perfil ao lado. */
+  const bell = user?.id ? notificationBell(user.id) : null;
+
+  const topbar = buildTopbar(openMenu, buildUserMenu(user, profile, onLogout), bell);
 
   shell.replaceChildren(sidebar, scrim, topbar);
 }

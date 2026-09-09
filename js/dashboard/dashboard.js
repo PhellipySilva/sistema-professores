@@ -115,6 +115,22 @@ function renderDashboard({ students, classes, schedules, sessions, payments, mak
     upcomingDuesSection(upcomingDues),
     makeupsSection(makeups),
   ]);
+
+  scrollToHashSection();
+}
+
+/**
+ * Rola até a seção pedida no endereço (#financeiro).
+ *
+ * O navegador tenta isso sozinho ao abrir a página — e não encontra nada, porque
+ * a dashboard só existe depois que as consultas respondem. Por isso a tentativa
+ * se repete aqui, uma vez, quando o conteúdo já está na tela.
+ */
+function scrollToHashSection() {
+  const id = window.location.hash.slice(1);
+  if (!id) return;
+
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /* ============================================================
@@ -238,7 +254,10 @@ function financeSection(summary) {
     },
   ];
 
-  return el('section', { class: 'section' }, [
+  // O `id` é o destino do aviso de mensalidade agrupado: clicar na notificação
+  // de "3 mensalidades atrasadas" abre a dashboard já rolada até aqui, que é a
+  // área financeira do professor. Nada mais muda por causa dele.
+  return el('section', { class: 'section', id: 'financeiro' }, [
     el('h2', { class: 'section__title', text: `Financeiro de ${monthLabel(summary.month)}` }),
     el('div', { class: 'grid-stats grid-stats--5' }, cards.map(statCard)),
   ]);

@@ -114,6 +114,25 @@
     padding: var(--space-1);
   }
 
+  /* O sino entrou na topbar, e agora são QUATRO blocos disputando a mesma faixa
+     de 60px: menu, logo, sino e perfil. Quem cede é o nome do professor, que já
+     nasceu preparado para isso (`.user-chip__name` trunca com reticências) —
+     ele encolhe só quando falta espaço, então em telas onde tudo cabia nada
+     muda. O sino não encolhe: um alvo de toque menor que 44px erra o dedo. */
+  .user-menu {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  /* `max-width: 100%` não é redundante com o 210px de layout.css: um <button>
+     calcula largura automática por CONTEÚDO, e não pela caixa do pai, mesmo
+     sendo display:flex. Sem esta linha o chip continuava com os 150px do nome
+     inteiro depois de o `.user-menu` já ter encolhido — e vazava para fora da
+     topbar em vez de truncar. */
+  .user-chip {
+    max-width: 100%;
+  }
+
   .card--flush > * {
     padding: var(--space-3) var(--space-4);
   }
@@ -251,11 +270,23 @@
   }
 }
 
-/* Abaixo de 340px não há espaço para os três: o nome sai e fica só o avatar,
-   que continua abrindo o mesmo menu de perfil. */
+/* Abaixo de 340px não há espaço para os quatro: o nome sai e fica só o avatar,
+   que continua abrindo o mesmo menu de perfil.
+
+   A seta ao lado do avatar sai junto, pelo mesmo motivo que o nome: ela é
+   enfeite — quem diz que ali há um menu é o avatar, e o toque é o mesmo com ou
+   sem ela. São 24px devolvidos para o sino caber sem espremer ninguém.
+
+   E a logo cede mais uma vez (96px → 84px), como já cedia aos 400px: entre
+   encolher a marca e cortar um botão de verdade, a marca encolhe. */
 @media (max-width: 340px) {
-  .user-chip__name {
+  .user-chip__name,
+  .user-chip__caret {
     display: none;
+  }
+
+  .topbar__brand {
+    width: 84px;
   }
 }
 
@@ -292,6 +323,17 @@
     inset-inline-start: auto;
     inset-inline-end: var(--space-6);
     width: min(400px, calc(100vw - var(--space-12)));
+  }
+
+  /* Da largura de tablet para cima o painel de notificações cabe pendurado no
+     sino, como o menu do perfil ao lado. No celular ele é uma faixa de largura
+     inteira (ver layout.css) — aqui volta a ser um menu ancorado. */
+  .notif-panel {
+    position: absolute;
+    inset-block-start: calc(100% + var(--space-2));
+    inset-inline: auto 0;
+    width: min(360px, calc(100vw - var(--space-8)));
+    max-height: min(70vh, 460px);
   }
 }
 

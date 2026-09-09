@@ -18,7 +18,9 @@ import { interestBadges } from '../js/lista-espera/lista-espera-ui.js';
 
 renderLayout({
   pageId: 'dashboard',
-  user: { email: 'phellipysilvadev@gmail.com' },
+  // O `id` faz o sininho aparecer na topbar: sem professor logado não há avisos
+  // de quem, e renderLayout omite o botão. Aqui ele é falso como o resto.
+  user: { id: 'preview', email: 'phellipysilvadev@gmail.com' },
   onLogout: () => {},
 });
 
@@ -274,6 +276,66 @@ const params = new URLSearchParams(location.search);
 if (params.has('menu')) {
   document.getElementById('app-sidebar').classList.add('is-open');
   document.querySelector('.scrim').classList.add('is-open');
+}
+
+/* ?sino=1 abre a central de notificações com avisos falsos.
+ *
+ * É a única forma de olhar o painel sem banco: a central lê de
+ * `payment_notifications`, e aqui não há sessão. Os itens são remontados com as
+ * mesmas classes do componente — o mesmo arranjo que este arquivo já faz com os
+ * cards de indicador acima.
+ *
+ * Serve para o que o desenho tem de mais arriscado no celular: a frase do aviso
+ * é longa e quebra em duas ou três linhas. */
+if (params.has('sino')) {
+  document.querySelector('.notif-trigger').click();
+
+  const aviso = ({ variant, iconName, texto, quando, lido }) =>
+    el('a', { class: `notif-item${lido ? '' : ' notif-item--unread'}`, href: '#' }, [
+      el('span', {
+        class: `notif-item__icon notif-item__icon--${variant}`,
+        html: icon(iconName, 16),
+      }),
+      el('div', { class: 'notif-item__body' }, [
+        el('p', { class: 'notif-item__text', text: texto }),
+        el('p', { class: 'notif-item__meta', text: quando }),
+      ]),
+      lido ? null : el('span', { class: 'notif-item__dot', 'aria-hidden': 'true' }),
+    ]);
+
+  const corpo = document.querySelector('.notif-body');
+
+  const encher = () => render(corpo, [
+    aviso({
+      variant: 'danger',
+      iconName: 'alert',
+      texto: 'A mensalidade de Maria Fernanda Albuquerque está atrasada há 3 dias. Vencimento: 05/09.',
+      quando: 'Hoje',
+    }),
+    aviso({
+      variant: 'warning',
+      iconName: 'wallet',
+      texto: 'A mensalidade de Pedro vence hoje, 09/09.',
+      quando: 'Hoje',
+    }),
+    aviso({
+      variant: 'accent',
+      iconName: 'clock',
+      texto: 'Pedro, Ana e João têm mensalidade vencendo amanhã, 10/09.',
+      quando: 'Ontem',
+      lido: true,
+    }),
+  ]);
+
+  /* A central de verdade consulta o banco ao montar e ao abrir. Aqui não há
+     sessão: as duas consultas falham e ela repinta o estado vazio por cima dos
+     avisos falsos, em um momento que depende da rede. Em vez de apostar num
+     setTimeout, o observador repõe o conteúdo sempre que ela o esvazia. */
+  new MutationObserver(() => {
+    if (!corpo.querySelector('.notif-item')) encher();
+  }).observe(corpo, { childList: true });
+
+  encher();
 }
 
 /* ?modal=1 abre um formulário de exemplo, para conferir o desenho do modal. */

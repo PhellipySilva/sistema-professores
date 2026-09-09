@@ -91,6 +91,92 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(request));
 });
 
+/* ============================================================
+   Avisos de mensalidade (Web Push)
+   ============================================================
+   Nada aqui interfere no cache acima: são outros dois eventos, e o Service
+   Worker precisava existir de qualquer forma para o push funcionar — é ele que
+   o navegador acorda quando o sistema está fechado.
+
+   O QUE CHEGA É SÓ TEXTO PRONTO
+
+     A mensagem vem montada de supabase/functions/notificar-mensalidades:
+     { title, body, url, tag }. Este arquivo não sabe o que é mensalidade, não
+     consulta banco nenhum e não decide nada — e é por isso que ele nunca terá
+     um valor em reais para vazar na tela bloqueada.
+
+   `tag` FAZ O AVISO NOVO SUBSTITUIR O ANTERIOR
+
+     Todos os atrasos usam a mesma tag. Três dias sem dar baixa geram um card na
+     tela bloqueada, não três — e ele estará sempre com a contagem de hoje. */
+
+self.addEventListener('push', (event) => {
+  const payload = readPushData(event);
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      // O ícone do próprio app: o professor reconhece de quem é o aviso antes
+      // de ler a primeira palavra.
+      icon: '/icons/icon-256.png',
+      badge: '/icons/icon-256.png',
+      tag: payload.tag,
+      // Substitui o card anterior E avisa de novo. Sem `renotify`, o aviso de
+      // hoje entraria mudo por cima do de ontem que ninguém dispensou — que é
+      // justamente o professor que mais precisa ser alcançado.
+      renotify: true,
+      data: { url: payload.url },
+    }),
+  );
+});
+
+/* Clicar abre a página do aviso: o aluno, quando é de um só, ou a área
+   financeira da dashboard, quando o aviso agrupou vários.
+
+   Antes de abrir uma aba nova, procura uma já aberta do sistema e a reaproveita
+   — o professor costuma estar com o MatchPhoint aberto, e acumular abas é a
+   forma mais rápida de tornar a notificação um estorvo. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const target = event.notification.data?.url || '/pages/dashboard.html';
+
+  event.waitUntil(
+    (async () => {
+      const url = new URL(target, self.location.origin).href;
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+      for (const client of clients) {
+        if (new URL(client.url).origin !== self.location.origin) continue;
+        await client.focus();
+        if ('navigate' in client) await client.navigate(url);
+        return;
+      }
+      await self.clients.openWindow(url);
+    })(),
+  );
+});
+
+/* Push sem corpo legível não pode virar notificação vazia: o navegador exige
+   que TODO push autorizado mostre algo (userVisibleOnly), e um card em branco
+   seria pior do que uma frase genérica. */
+function readPushData(event) {
+  const fallback = {
+    title: 'MatchPhoint',
+    body: 'Você tem um aviso de mensalidade.',
+    url: '/pages/dashboard.html',
+    tag: 'mensalidade',
+  };
+
+  if (!event.data) return fallback;
+
+  try {
+    return { ...fallback, ...event.data.json() };
+  } catch {
+    return fallback;
+  }
+}
+
 async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);
 

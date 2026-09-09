@@ -91,6 +91,7 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 9 | `0009_categorias_tipo_aluno_afastados.sql` | Categoria vira o nível (E…PRO), tipo do aluno (Kids/Adulto), aluno afastado e categoria do planejamento |
 | 10 | `0010_compartilhar_planejamento.sql` | Compartilhar um planejamento com outro professor (tabela `lesson_plan_shares` e função `list_teachers()`) |
 | 11 | `0011_nome_do_professor.sql` | O seletor de compartilhamento mostra o nome do professor, nunca o apelido do e-mail |
+| 12 | `0012_notificacoes_mensalidade.sql` | Avisos de mensalidade: inscrições de push e o registro dos avisos enviados (`push_subscriptions`, `payment_notifications`) |
 
 Para conferir que deu certo, rode:
 
@@ -101,7 +102,7 @@ where schemaname = 'public'
 order by tablename;
 ```
 
-Devem aparecer **14 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
+Devem aparecer **16 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
 foi aplicado e os dados estariam expostos — não siga adiante.
 
 > **A migration 0009 troca o significado de `students.category`**: o que era Kids/Adulto passa a
@@ -118,7 +119,7 @@ foi aplicado e os dados estariam expostos — não siga adiante.
 > falhar (por exemplo `relation "profiles" already exists`, sinal de que o script foi colado duas
 > vezes), a transação inteira é desfeita e o banco volta ao que era antes.
 >
-> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 13 tabelas e as funções, é
+> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 16 tabelas e as funções, é
 > seguro em qualquer estado, e depois dele os três arquivos rodam limpos. **É destrutivo:** apaga
 > os dados junto (não mexe nos usuários).
 
@@ -163,6 +164,67 @@ Todo dado fictício tem o prefixo `[teste]` no nome, então a limpeza é precisa
 não toca no que é seu. O seed inclui casos de propósito: aluno em dia, aluno
 atrasado, aluno sem mensalidade e uma reposição pendente.
 
+### 6. Avisos de mensalidade (opcional)
+
+Sem esta configuração o sistema funciona igual: o sininho continua guardando e listando os avisos
+dentro do sistema. O que ela liga é o **push** — o aviso que chega ao celular com o MatchPhoint
+fechado.
+
+**a) Gerar as chaves VAPID** (uma vez na vida — trocá-las obriga todo mundo a reativar os avisos):
+
+```bash
+node scripts/gerar-vapid.mjs
+```
+
+**b) Guardar cada chave no seu lugar:**
+
+| Onde | Variável | Qual chave |
+|---|---|---|
+| `.env` e Vercel → Environment Variables | `VITE_VAPID_PUBLIC_KEY` | a **pública** |
+| Supabase → Project Settings → Edge Functions → Secrets | `VAPID_PUBLIC_KEY` | a **pública** |
+| Supabase → Project Settings → Edge Functions → Secrets | `VAPID_PRIVATE_KEY` | a **privada** |
+| Supabase → Project Settings → Edge Functions → Secrets | `VAPID_SUBJECT` | `mailto:voce@exemplo.com` |
+
+> A chave **privada** nunca entra no `.env` nem no frontend. No bundle, ela deixaria qualquer
+> pessoa enviar notificação em nome do sistema — é o mesmo raciocínio da `service_role`.
+
+**c) Publicar a função agendada:**
+
+```bash
+npx supabase login
+npx supabase init          # só na primeira vez: cria supabase/config.toml
+npx supabase link --project-ref SEU-PROJETO
+npx supabase functions deploy notificar-mensalidades
+```
+
+> `supabase init` não sobrescreve nada do que já está em `supabase/` — ele só acrescenta o
+> `config.toml`, sem o qual o `link` não sabe de que projeto se trata.
+
+**d) Ligar as extensões e agendar os três horários.** Em **Database → Extensions**, ative
+`pg_cron` e `pg_net`. Depois, no SQL Editor, rode o bloco comentado no fim de
+`supabase/migrations/0012_notificacoes_mensalidade.sql`, substituindo a URL do projeto e a
+`service_role` key. Ele cria três tarefas no `pg_cron` — 11h, 15h e 21h UTC, que são **08h, 12h e
+18h em Brasília**.
+
+> Use a `service_role` **legada** (o JWT que começa com `eyJ`, em *Project Settings → API Keys*).
+> A função exige token válido, e a chave nova no formato `sb_secret_...` não é um JWT: a chamada
+> volta `401` e o agendamento roda sem enviar nada.
+
+**e) Ativar no aparelho.** No sistema, o professor abre o sininho e toca em *Ativar avisos neste
+aparelho*. A permissão é pedida ali, e não na abertura da página: negada uma vez, o navegador
+fecha o cadeado e só as configurações dele reabrem.
+
+Para conferir sem esperar o horário:
+
+```bash
+curl -X POST 'https://SEU-PROJETO.supabase.co/functions/v1/notificar-mensalidades' \
+  -H 'Authorization: Bearer SUA-SERVICE-ROLE-KEY' \
+  -H 'Content-Type: application/json' -d '{"force":true}'
+```
+
+> **iPhone:** o Safari só entrega push para site **instalado na tela de início** (iOS 16.4+).
+> No Android e no desktop funciona com o navegador comum.
+
 ---
 
 ## Como executar localmente
@@ -181,7 +243,7 @@ imprimem o resultado. Não entram no build de produção.
 
 | Página | O que cobre |
 |---|---|
-| `/tests/` | Datas e fusos, ocorrências de aula, matrícula por dia, status financeiro, vagas, fila de espera, conflito de sincronização, dinheiro (166 casos) |
+| `/tests/` | Datas e fusos, ocorrências de aula, matrícula por dia, status financeiro, vagas, fila de espera, conflito de sincronização, dinheiro e avisos de mensalidade (236 casos) |
 | `/tests/render.html` | Todos os componentes de interface montados com dados falsos (151 casos) |
 | `/tests/preview.html` | Vitrine visual: sidebar, topbar, perfil, cards, campos, calendário e chamada, sem banco nem sessão |
 | `/tests/preview-mobile.html` | A vitrine dentro de iframes de 390 e 320 px, medindo se sobra scroll horizontal |
@@ -240,16 +302,18 @@ dado de verdade.
 │   ├── components/          layout, modal, toast, confirm, empty-state, loading, icons
 │   ├── dashboard/ alunos/ turmas/ agenda/ financeiro/ reposicoes/ planejamentos/
 │   ├── lista-espera/        fila por turma, regra da vaga e avisos
+│   ├── notificacoes/        regras do aviso de mensalidade, push e central do sino
 │   ├── offline/             cache local, fila de pendências e sincronização
 │   └── utils/               dates, formatters, validators, dom
 │
 ├── public/                  copiado tal e qual para a raiz do site
-│   ├── sw.js                Service Worker (faz o sistema ABRIR sem internet)
+│   ├── sw.js                Service Worker (abrir sem internet + receber push)
 │   ├── manifest.webmanifest instalável como aplicativo
 │   └── icons/
 │
 ├── tests/                   suítes e vitrine visual — fora do build
 ├── supabase/migrations/     SQL versionado
+├── supabase/functions/      Edge Functions (o envio agendado dos avisos)
 ├── docs/ARQUITETURA.md      decisões de arquitetura e o porquê de cada uma
 └── assets/
     ├── brand/               logo e monograma, gerados de img/logotipo-sistema.png
@@ -379,6 +443,51 @@ A regra que mantém isso honesto, verificável com um `grep`:
   alunos afastados, planejamentos com categoria, filtro e grade 2x2, compartilhamento de
   planejamento com outro professor, turmas e planos ordenados por horário e reposição em turma
   lotada mediante confirmação
+- [x] **Fase 17** — Avisos de mensalidade: push no celular para vencimento de amanhã, de hoje e
+  atraso, com revezamento de horário, agrupamento por situação e central de notificações no sino
+
+## Avisos de mensalidade
+
+O professor é avisado no celular quando uma mensalidade **vence amanhã**, **vence hoje** ou está
+**atrasada** — mesmo com o MatchPhoint fechado.
+
+| Situação | O que chega |
+|---|---|
+| 🔵 Vence amanhã | *A mensalidade de Pedro vence amanhã, 09/09.* |
+| 🟡 Vence hoje | *A mensalidade de Pedro vence hoje, 09/09.* |
+| 🔴 Está atrasada | *A mensalidade de Pedro está atrasada há 3 dias. Vencimento: 05/09.* |
+
+**Nenhum valor em dinheiro aparece no aviso.** Ele é lido na tela bloqueada, por quem estiver por
+perto — nome e data bastam para o professor saber o que fazer, e o quanto está dentro do sistema.
+
+**As regras, e onde cada uma mora:**
+
+- **No máximo um aviso por aluno por dia.** É o índice único
+  `payment_notifications (user_id, student_id, notified_on)` — o registro é gravado *antes* do
+  envio, então o que o banco recusa não vira notificação.
+- **O horário reveza entre 08h, 12h e 18h** conforme os dias passam, para aumentar a chance de o
+  professor estar com o celular na mão. O horário sai da própria data (`slotHourForDate`), sem
+  estado guardado em lugar nenhum.
+- **Continua todo dia enquanto estiver pendente, e para na hora da baixa.** Os pagamentos são
+  relidos do banco a cada execução, momentos antes de compor as mensagens: dar baixa às 11h59 já
+  impede o envio das 12h. Não existe fila decidida de véspera.
+- **Patrocinado, afastado e mensalidade paga nunca são avisados** — pela mesma `isBillable` que já
+  os tira da previsão do mês na dashboard.
+- **Vários alunos na mesma situação viram uma notificação só.** Cinco avisos seguidos dizendo a
+  mesma coisa é o caminho mais curto para o professor desligar tudo.
+- **Clicar abre o destino certo:** o aluno, quando o aviso é de um só; a área financeira da
+  dashboard, quando agrupou vários.
+
+**A central do sino**, ao lado do perfil, guarda os avisos enviados com a mesma frase que apareceu
+no celular, marca como lido no clique e traz o botão de ativar os avisos neste aparelho. Um aviso
+dispensado sem querer continua ali.
+
+Quem decide o que avisar é `supabase/functions/notificar-mensalidades`, chamada pelo `pg_cron` nos
+três horários. Ela **não sabe nenhuma regra financeira**: importa `js/financeiro/financeiro.js` e
+`js/notificacoes/mensalidades.js`, os mesmos arquivos que as telas usam — mudar o financeiro muda
+o aviso junto, e é impossível os dois discordarem.
+
+A configuração está em *Como configurar → 6. Avisos de mensalidade*.
 
 ## Funcionamento offline
 

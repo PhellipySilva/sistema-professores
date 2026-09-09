@@ -21,6 +21,10 @@ import { matchesStudentFilters, summarizeStudents } from '../js/alunos/alunos-ui
 import { formatLevel, formatStudentType, teacherLabel } from '../js/utils/formatters.js';
 import { validateGuardianName, validateLevel, validateStudentType } from '../js/utils/validators.js';
 import { isConflict } from '../js/offline/conflitos.js';
+import {
+  SLOT_HOURS, buildPushMessages, daysBetween, formatNameList, notificationBody,
+  pendingPaymentSituation, slotHourForDate,
+} from '../js/notificacoes/mensalidades.js';
 import { timestampToLocalISODate } from '../js/utils/dates.js';
 import { parseCurrencyToCents, formatCurrency, formatPhone, whatsappLink } from '../js/utils/formatters.js';
 import { validateDueDay } from '../js/utils/validators.js';
@@ -461,6 +465,121 @@ eq('whatsapp com DDD ganha o 55', whatsappLink('82999998888'), 'https://wa.me/55
 eq('whatsapp com fixo de 10 digitos', whatsappLink('8232228888'), 'https://wa.me/558232228888');
 eq('whatsapp sem telefone', whatsappLink(''), '');
 eq('whatsapp com mensagem', whatsappLink('82999998888', 'Oi!'), 'https://wa.me/5582999998888?text=Oi!');
+
+/* ---------- AVISOS DE MENSALIDADE ---------- */
+
+/* Revezamento: o horario sai da data, entao a mesma data responde o mesmo em
+   qualquer servidor, e tres dias seguidos cobrem os tres horarios. */
+eq('revezamento tem os tres horarios', SLOT_HOURS, [8, 12, 18]);
+eq('revezamento cobre os tres em tres dias',
+  [...new Set(['2026-09-08', '2026-09-09', '2026-09-10'].map(slotHourForDate))].sort((a, b) => a - b),
+  [8, 12, 18]);
+eq('revezamento repete no quarto dia',
+  slotHourForDate('2026-09-11'), slotHourForDate('2026-09-08'));
+eq('revezamento nao quebra na virada do ano',
+  [...new Set(['2026-12-31', '2027-01-01', '2027-01-02'].map(slotHourForDate))].length, 3);
+eq('daysBetween conta dias inteiros', daysBetween('2026-09-05', '2026-09-08'), 3);
+
+/* O aluno das tres situacoes. created_at em setembro faz julho e agosto ficarem
+   fora da cobranca — ele nao existia quando aqueles meses venceram. */
+const alunoAviso = (dueDay, extra = {}) => ({
+  id: 'a1', name: 'Pedro', monthly_fee_cents: 15000, due_day: dueDay,
+  sponsored: false, on_leave: false, created_at: '2026-09-01T12:00:00.000Z', ...extra,
+});
+const situacao = (student, payments, hoje) => pendingPaymentSituation(student, payments, hoje);
+
+const venceAmanha = situacao(alunoAviso(9), [], '2026-09-08');
+eq('vence amanha', venceAmanha.kind, 'due_tomorrow');
+eq('texto de vence amanha',
+  notificationBody('Pedro', venceAmanha), 'A mensalidade de Pedro vence amanhã, 09/09.');
+
+const venceHoje = situacao(alunoAviso(9), [], '2026-09-09');
+eq('vence hoje', venceHoje.kind, 'due_today');
+eq('texto de vence hoje',
+  notificationBody('Pedro', venceHoje), 'A mensalidade de Pedro vence hoje, 09/09.');
+
+const atrasada = situacao(alunoAviso(5), [], '2026-09-08');
+eq('atrasada', [atrasada.kind, atrasada.daysOverdue], ['overdue', 3]);
+eq('texto de atrasada', notificationBody('Pedro', atrasada),
+  'A mensalidade de Pedro está atrasada há 3 dias. Vencimento: 05/09.');
+eq('um dia de atraso fica no singular',
+  notificationBody('Pedro', situacao(alunoAviso(7), [], '2026-09-08')),
+  'A mensalidade de Pedro está atrasada há 1 dia. Vencimento: 07/09.');
+
+/* Quem NAO deve ser avisado. */
+const pago = [{ reference_month: '2026-09-01', due_date: '2026-09-05', paid_date: '2026-09-04' }];
+eq('baixa registrada encerra o aviso', situacao(alunoAviso(5), pago, '2026-09-08'), null);
+eq('patrocinado nunca e avisado', situacao(alunoAviso(5, { sponsored: true }), [], '2026-09-08'), null);
+eq('afastado nunca e avisado', situacao(alunoAviso(5, { on_leave: true }), [], '2026-09-08'), null);
+eq('sem mensalidade configurada nao gera aviso',
+  situacao(alunoAviso(5, { monthly_fee_cents: null }), [], '2026-09-08'), null);
+eq('sem dia de vencimento nao gera aviso',
+  situacao(alunoAviso(null), [], '2026-09-08'), null);
+eq('mes que venceu antes da matricula nao cobra',
+  situacao(alunoAviso(5, { created_at: '2026-09-20T12:00:00.000Z' }), [], '2026-09-25'), null);
+eq('vencimento distante ainda nao avisa', situacao(alunoAviso(20), [], '2026-09-08'), null);
+
+/* Um aluno gera UMA situacao por dia: o atraso mais antigo ganha do vencimento
+   de hoje, porque e a ligacao que o professor precisa fazer. */
+const doisMeses = situacao(
+  alunoAviso(9, { created_at: '2026-08-01T12:00:00.000Z' }), [], '2026-09-09',
+);
+eq('atraso antigo vence o vencimento de hoje',
+  [doisMeses.kind, doisMeses.dueDate], ['overdue', '2026-08-09']);
+
+/* Virada de mes: quem vence dia 1o e avisado no dia 31 do mes anterior. */
+const agostoPago = [{ reference_month: '2026-08-01', due_date: '2026-08-01', paid_date: '2026-08-01' }];
+eq('vence amanha atravessa a virada do mes',
+  situacao(alunoAviso(1, { created_at: '2026-08-01T12:00:00.000Z' }), agostoPago, '2026-08-31').dueDate,
+  '2026-09-01');
+
+/* Agrupamento: varios alunos na mesma situacao viram UMA notificacao. */
+const entrada = (id, name, kind) => ({
+  student: { id, name },
+  situation: { kind, dueDate: '2026-09-09', daysOverdue: kind === 'overdue' ? 3 : 0 },
+});
+
+const umSo = buildPushMessages([entrada('a1', 'Pedro', 'due_today')]);
+eq('um aluno gera uma mensagem no singular', umSo.length, 1);
+eq('um aluno leva ao proprio aluno', umSo[0].url, '/pages/aluno.html?id=a1');
+eq('um aluno usa a frase da central',
+  umSo[0].body, 'A mensalidade de Pedro vence hoje, 09/09.');
+
+const varios = buildPushMessages([
+  entrada('a1', 'Pedro', 'overdue'),
+  entrada('a2', 'Ana', 'overdue'),
+  entrada('a3', 'João', 'overdue'),
+]);
+eq('tres na mesma situacao viram uma notificacao so', varios.length, 1);
+eq('titulo agrupado conta os alunos', varios[0].title, '3 mensalidades atrasadas');
+eq('corpo agrupado nomeia os alunos',
+  varios[0].body, 'Pedro, Ana e João estão com a mensalidade atrasada.');
+eq('aviso agrupado leva a area financeira',
+  varios[0].url, '/pages/dashboard.html#financeiro');
+
+const misturado = buildPushMessages([
+  entrada('a1', 'Pedro', 'overdue'),
+  entrada('a2', 'Ana', 'due_today'),
+]);
+eq('situacoes diferentes nao se misturam', misturado.length, 2);
+eq('a mais urgente primeiro', misturado.map((m) => m.kind), ['due_today', 'overdue']);
+
+eq('lista de nomes com dois', formatNameList(['Ana', 'Bia']), 'Ana e Bia');
+eq('lista de nomes com tres', formatNameList(['Ana', 'Bia', 'Caio']), 'Ana, Bia e Caio');
+eq('lista de nomes longa vira resumo',
+  formatNameList(['Ana', 'Bia', 'Caio', 'Duda']), 'Ana, Bia e mais 2');
+
+/* REQUISITO: nenhum valor em dinheiro no aviso — ele aparece na tela bloqueada. */
+const todosOsTextos = [
+  notificationBody('Pedro', venceAmanha),
+  notificationBody('Pedro', venceHoje),
+  notificationBody('Pedro', atrasada),
+  ...buildPushMessages([
+    entrada('a1', 'Pedro', 'overdue'),
+    entrada('a2', 'Ana', 'overdue'),
+  ]).flatMap((m) => [m.title, m.body]),
+].join(' ');
+eq('nenhum aviso mostra dinheiro', /R\$|\d+,\d{2}/.test(todosOsTextos), false);
 
 const failed = results.filter((r) => !r.ok);
 document.title = `${results.length - failed.length}/${results.length} OK`;

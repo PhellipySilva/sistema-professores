@@ -23,6 +23,12 @@
       <figcaption id="cap-c">320 px — tela mínima</figcaption>
       <iframe id="c" width="320" height="1240" src="/tests/preview.html"></iframe>
     </figure>
+    <!-- O painel do sino é o que mais arrisca estourar a largura no celular: ele
+         nasce pendurado num botão que está longe da borda direita. -->
+    <figure>
+      <figcaption id="cap-d">360 px — sino aberto</figcaption>
+      <iframe id="d" width="360" height="1240" src="/tests/preview.html?sino=1"></iframe>
+    </figure>
 
     <script type="module">
       /* Mede o scroll horizontal DENTRO de cada iframe: é o único jeito de
@@ -30,25 +36,46 @@
       window.addEventListener('load', () => {
         setTimeout(() => {
           const linhas = [];
-          for (const id of ['a', 'b', 'c']) {
+          for (const id of ['a', 'b', 'c', 'd']) {
             const frame = document.getElementById(id).contentDocument;
             const doc = frame.documentElement;
             const sobra = doc.scrollWidth - doc.clientWidth;
-            linhas.push(`${id}:${doc.clientWidth}px sobra=${sobra}`);
-            document.getElementById(`cap-${id}`).textContent += sobra > 0 ? ` ⚠ ESTOURA ${sobra}px` : ' ✓ sem scroll lateral';
 
-            if (sobra > 0) {
-              const culpados = [];
-              for (const node of frame.querySelectorAll('body *')) {
-                const r = node.getBoundingClientRect();
-                const estilo = frame.defaultView.getComputedStyle(node);
-                if (estilo.position === 'fixed' || estilo.visibility === 'hidden') continue;
-                if (r.right > doc.clientWidth + 1) {
-                  culpados.push(`${node.tagName}.${String(node.className).split(' ')[0]}@${Math.round(r.right)}`);
-                }
+            /* Elemento `fixed` que sai da tela NÃO entra no scrollWidth: ele
+               simplesmente fica cortado, sem barra de rolagem para denunciar.
+               Foi assim que o painel do sino apareceu torto no celular — daí
+               esta segunda medição, que olha os dois lados. */
+            /* Barra que rola de propósito (o filtro por dia da semana) tem
+               filhos além da borda por desenho — só conta quem vaza da TELA. */
+            const dentroDeUmRolador = (node) => {
+              for (let p = node.parentElement; p && p !== frame.body; p = p.parentElement) {
+                const ox = frame.defaultView.getComputedStyle(p).overflowX;
+                if (ox === 'auto' || ox === 'scroll') return true;
               }
-              linhas.push(`>> ${culpados.slice(0, 5).join(' , ')}`);
+              return false;
+            };
+
+            const vazando = [];
+            for (const node of frame.querySelectorAll('body *')) {
+              const estilo = frame.defaultView.getComputedStyle(node);
+              if (estilo.visibility === 'hidden' || estilo.display === 'none') continue;
+
+              const r = node.getBoundingClientRect();
+              if (r.width === 0) continue;
+              if (r.right <= doc.clientWidth + 1 && r.left >= -1) continue;
+              if (dentroDeUmRolador(node)) continue;
+
+              vazando.push(`${node.tagName}.${String(node.className).split(' ')[0]}@${Math.round(r.left)}..${Math.round(r.right)}`);
             }
+
+            linhas.push(`${id}:${doc.clientWidth}px sobra=${sobra} fora=${vazando.length}`);
+
+            const cap = document.getElementById(`cap-${id}`);
+            if (sobra > 0) cap.textContent += ` ⚠ ESTOURA ${sobra}px`;
+            else if (vazando.length > 0) cap.textContent += ` ⚠ ${vazando.length} FORA DA TELA`;
+            else cap.textContent += ' ✓ tudo dentro da tela';
+
+            if (vazando.length > 0) linhas.push(`>> ${vazando.slice(0, 5).join(' , ')}`);
           }
           document.title = linhas.join(' | ');
         }, 1200);
