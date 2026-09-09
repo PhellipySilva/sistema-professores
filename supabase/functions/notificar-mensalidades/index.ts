@@ -41,10 +41,23 @@
  * PUBLICAR
  *   supabase functions deploy notificar-mensalidades
  *
- * TESTAR NA HORA (ignora o revezamento):
+ * TESTAR NA HORA (ignora o revezamento, mas cobra a situação real):
  *   curl -X POST '.../functions/v1/notificar-mensalidades' \
  *     -H 'Authorization: Bearer SUA-SERVICE-ROLE-KEY' \
  *     -H 'Content-Type: application/json' -d '{"force":true}'
+ *
+ * MODO DE TESTE — TEMPORÁRIO (ver a seção "Envio de TESTE" mais abaixo)
+ *
+ *   Com `scenario` no corpo, a função entra num caminho separado: inventa a
+ *   situação pedida, espera ~7 segundos e manda UM aviso para os aparelhos de
+ *   quem chamou. Não grava nada, não lê o financeiro e não toca no cron.
+ *
+ *     {"force": true, "scenario": "vence_amanha"}
+ *     {"force": true, "scenario": "vence_hoje"}
+ *     {"force": true, "scenario": "atrasada", "daysLate": 3}
+ *
+ *   Quem chama são os botões de js/notificacoes/teste.js, com o token da sessão
+ *   do professor — nunca com a service_role.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -54,9 +67,11 @@ import webpush from 'npm:web-push@3.6.7';
    sobe até a raiz do projeto de propósito: uma cópia local aqui dentro seria
    uma segunda verdade sobre mensalidade, e as duas divergiriam no primeiro
    ajuste. */
+import { addDays, startOfMonth } from '../../../js/utils/dates.js';
 import { recentReferenceMonths } from '../../../js/financeiro/financeiro.js';
 import {
   buildPushMessages,
+  FINANCE_URL,
   notificationRecord,
   pendingPaymentSituation,
   slotHourForDate,
@@ -64,20 +79,50 @@ import {
 
 const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
 
+/* Espera antes do envio de TESTE. Fica no servidor, e não no navegador, porque
+   a graça do teste é ver o aviso com a tela bloqueada — e um `setTimeout` no
+   navegador morre junto com a aba quando o celular apaga. */
+const TEST_DELAY_MS = 7_000;
+
+/* Nome fictício do aviso de teste. A frase é a mesma da real, palavra por
+   palavra; só o nome denuncia que não é aluno de verdade — o professor não pode
+   sair ligando para alguém por causa de um teste. */
+const TEST_STUDENT_NAME = 'Aluno de Teste';
+
 /* Colunas mínimas. `created_at` entra porque billingStartDate precisa saber
    quando o aluno passou a existir. Nenhum telefone, nenhum responsável: a
    função não tem o que fazer com eles. */
 const STUDENT_COLUMNS =
   'id, user_id, name, monthly_fee_cents, due_day, sponsored, on_leave, created_at';
 
+/* O cron chama de dentro do banco e não passa por CORS. O navegador, sim: os
+   botões de teste mandam `Authorization` e `Content-Type`, o que faz o Chrome
+   disparar um OPTIONS de preflight antes do POST. Sem esta resposta, a chamada
+   morre no navegador antes de chegar aqui — e o erro não aparece no log da
+   função, só no console. */
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 Deno.serve(async (request) => {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
   try {
     const body = await readJson(request);
     const timeZone = Deno.env.get('NOTIFICATION_TIMEZONE') ?? DEFAULT_TIMEZONE;
     const { date: today, hour } = nowInTimeZone(timeZone);
 
     const slot = slotHourForDate(today);
-    if (hour !== slot && body.force !== true) {
+
+    /* `scenario` só chega dos botões de teste. O cron manda '{}', então o
+       caminho de produção abaixo não enxerga nada disto. */
+    const testMode = typeof body.scenario === 'string' && body.scenario.length > 0;
+
+    if (!testMode && hour !== slot && body.force !== true) {
       // O caso comum: duas das três chamadas diárias terminam aqui, sem tocar
       // no banco. `ok` e não erro — não aconteceu nada de errado.
       return json({ ok: true, skipped: true, today, hour, slot });
@@ -94,6 +139,10 @@ Deno.serve(async (request) => {
       requiredEnv('VAPID_PUBLIC_KEY'),
       requiredEnv('VAPID_PRIVATE_KEY'),
     );
+
+    if (testMode) {
+      return json({ ok: true, teste: true, ...(await notifyTest(supabase, request, body, today)) });
+    }
 
     const result = await notifyEveryone(supabase, today);
     return json({ ok: true, today, hour, slot, ...result });
@@ -184,6 +233,113 @@ async function notifyEveryone(supabase: any, today: string) {
   }
 
   return { professores: userIds.length, avisos, enviados, falhas };
+}
+
+/* ============================================================
+   Envio de TESTE — temporário
+   ============================================================
+   Ligado pelos botões de js/notificacoes/teste.js, que por sua vez só existem
+   com VITE_ENABLE_TEST_NOTIFICATION=true. Apagar este trecho e as duas
+   importações que ele usa (addDays/startOfMonth e FINANCE_URL) remove o recurso
+   sem tocar em uma linha do caminho de produção.
+
+   O QUE ELE IGNORA, E SÓ ISSO
+
+     O horário do revezamento e a situação real da mensalidade. O cenário é
+     montado aqui, na memória, e o texto sai das MESMAS funções que o aviso de
+     verdade usa — é justamente isso que o teste precisa provar.
+
+   O QUE ELE NÃO FAZ
+
+     Não grava em `payment_notifications`, não inventa vencimento para aluno
+     nenhum, não lê o financeiro e não mexe no agendamento. Termina o envio e
+     não deixa rastro em lugar nenhum.
+
+   PARA QUEM ELE MANDA
+
+     Só para os aparelhos de QUEM PEDIU. O `Authorization` que chega é o token
+     da sessão do professor, e é dele que sai o user_id — não existe parâmetro
+     de usuário, então ninguém consegue disparar um teste no celular de outro. */
+
+/**
+ * Monta o cenário pedido, sem consultar nada.
+ *
+ * As datas são relativas a hoje, e por isso o texto sai idêntico ao que o
+ * professor veria de verdade naquela situação — inclusive o "há 3 dias".
+ */
+function buildTestSituation(body: any, today: string) {
+  if (body.scenario === 'vence_amanha') {
+    const dueDate = addDays(today, 1);
+    return { kind: 'due_tomorrow', referenceMonth: startOfMonth(dueDate), dueDate, daysOverdue: 0 };
+  }
+
+  if (body.scenario === 'vence_hoje') {
+    return { kind: 'due_today', referenceMonth: startOfMonth(today), dueDate: today, daysOverdue: 0 };
+  }
+
+  if (body.scenario === 'atrasada') {
+    const pedido = Number(body.daysLate);
+    const dias = Number.isFinite(pedido) && pedido > 0 ? Math.floor(pedido) : 3;
+    const dueDate = addDays(today, -dias);
+    return { kind: 'overdue', referenceMonth: startOfMonth(dueDate), dueDate, daysOverdue: dias };
+  }
+
+  throw new Error(`cenário de teste desconhecido: ${body.scenario}`);
+}
+
+async function notifyTest(supabase: any, request: Request, body: any, today: string) {
+  const userId = await resolveCaller(supabase, request);
+  if (!userId) {
+    throw new Error('O teste precisa da sessão do professor — nenhum usuário no token.');
+  }
+
+  const situation = buildTestSituation(body, today);
+
+  /* O texto vem inteiro de `buildPushMessages`: mesmo título, mesma frase,
+     mesmo agrupamento. Só o destino do toque e a etiqueta mudam, e mudam por
+     necessidade: não há aluno de verdade para abrir, e a etiqueta de produção
+     faria o teste APAGAR da tela bloqueada um aviso real ainda não visto. */
+  const [message] = buildPushMessages([
+    { student: { id: 'teste', name: TEST_STUDENT_NAME }, situation },
+  ]);
+
+  const target = { ...message, url: FINANCE_URL, tag: `${message.tag}-teste` };
+
+  const subscriptions = await selectAll(() =>
+    supabase
+      .from('push_subscriptions')
+      .select('id, endpoint, p256dh, auth')
+      .eq('user_id', userId),
+  );
+
+  if (subscriptions.length === 0) {
+    return { cenario: body.scenario, aparelhos: 0, enviados: 0, falhas: 0 };
+  }
+
+  // A espera acontece com a requisição do navegador ainda aberta, e isso não é
+  // problema: o envio termina mesmo que a aba seja fechada ou a tela apague.
+  await new Promise((resolve) => setTimeout(resolve, TEST_DELAY_MS));
+
+  const { enviados, falhas } = await sendAll(supabase, subscriptions, [target]);
+
+  return { cenario: body.scenario, aparelhos: subscriptions.length, enviados, falhas };
+}
+
+/**
+ * De quem é a sessão que chamou.
+ *
+ * O cron manda a service_role, que não é sessão de ninguém — `getUser` recusa,
+ * e o teste não roda. É o que garante que o agendamento nunca caia neste
+ * caminho por engano.
+ */
+async function resolveCaller(supabase: any, request: Request) {
+  const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error) return null;
+
+  return data?.user?.id ?? null;
 }
 
 /**
@@ -339,6 +495,6 @@ function requiredEnv(name: string) {
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   });
 }

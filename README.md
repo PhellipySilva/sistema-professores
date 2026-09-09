@@ -225,6 +225,32 @@ curl -X POST 'https://SEU-PROJETO.supabase.co/functions/v1/notificar-mensalidade
 > **iPhone:** o Safari só entrega push para site **instalado na tela de início** (iOS 16.4+).
 > No Android e no desktop funciona com o navegador comum.
 
+**f) Botões de teste — temporário, só fora de produção.** Com
+
+```
+VITE_ENABLE_TEST_NOTIFICATION=true
+```
+
+o painel do sininho ganha três botões: *🧪 Testar: vence amanhã*, *🧪 Testar: vence hoje* e
+*🧪 Testar: atrasada*. Cada um manda um aviso de mentira para os aparelhos do professor logado
+**~7 segundos depois do toque** — tempo de bloquear a tela e ver como o aviso aparece nela. A
+espera é do servidor, não do navegador: um cronômetro no navegador morreria junto com a aba quando
+a tela apagasse.
+
+O texto, o ícone e a cor saem das mesmas funções do aviso real; o que muda é só o nome (*Aluno de
+Teste*, para ninguém sair ligando para um aluno de verdade), o destino do toque (a área financeira,
+já que não há aluno) e a etiqueta — sem isso o teste APAGARIA da tela bloqueada um aviso real ainda
+não visto.
+
+**Nada é gravado:** nenhum vencimento é inventado, nenhuma linha entra em `payment_notifications`,
+o financeiro não é lido e o cron não é tocado. A variável controla **somente** os botões: ausente
+ou em qualquer valor diferente de `true`, eles não existem — e o empacotador prova isso, deixando o
+código de teste inteiro fora do arquivo publicado. Os avisos reais continuam saindo pelo cron do
+mesmo jeito nos dois casos.
+
+Para remover de vez: apague `js/notificacoes/teste.js` e `js/api/notification-test.js`, as duas
+linhas que os chamam em `js/notificacoes/central.js`, e a seção "Envio de TESTE" da Edge Function.
+
 ---
 
 ## Como executar localmente
