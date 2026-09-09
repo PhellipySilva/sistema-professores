@@ -23,8 +23,6 @@ import {
   markPaymentNotificationRead,
 } from '../api/payment-notifications.js';
 import { enablePush, ensurePushSubscription, pushStatus } from './push.js';
-// TEMPORÁRIO: some junto com VITE_ENABLE_TEST_NOTIFICATION (ver teste.js).
-import { TEST_NOTIFICATIONS_ENABLED, testNotificationsBlock } from './teste.js';
 
 /* A cor de cada situação é a mesma da tela: azul para o que ainda vai vencer,
    laranja para o que vence hoje, vermelho para o atraso. O professor já
@@ -81,10 +79,6 @@ export function notificationBell(userId) {
     ]),
     body,
     permissionRow(userId),
-    /* TEMPORÁRIO. A constante é o que permite ao empacotador provar que este
-       ramo não existe em produção e deixar o bloco de teste inteiro fora do
-       arquivo publicado — por isso ela vem antes da chamada, e não dentro. */
-    TEST_NOTIFICATIONS_ENABLED ? testNotificationsBlock() : null,
   ]);
 
   const root = el('div', { class: 'notif' }, [trigger, panel]);
