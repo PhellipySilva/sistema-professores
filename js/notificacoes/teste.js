@@ -103,11 +103,23 @@ async function disparar(botao, scenario) {
   botao.textContent = 'Enviando em ~7s...';
 
   try {
-    await sendTestNotification(scenario);
-    toast.success('Aviso de teste enviado.');
+    const resultado = await sendTestNotification(scenario);
+
+    /* Três desfechos diferentes, três frases diferentes. "Enviado" quando nada
+       saiu seria mentira — e mandaria o professor procurar defeito no celular
+       em vez de no cadastro do aparelho. */
+    if (!resultado?.aparelhos) {
+      toast.info('Nenhum aparelho registrado ainda. Ative os avisos e tente de novo.');
+    } else if (!resultado.enviados) {
+      toast.error('O envio falhou. Veja o log da função no Supabase.');
+    } else {
+      toast.success('Aviso de teste enviado. Bloqueie a tela.');
+    }
   } catch (error) {
     console.error('[teste] falha ao enviar o aviso', error);
-    toast.error('Não foi possível enviar o aviso de teste.');
+    // A causa vem do servidor (ver describeInvokeError). No celular não há
+    // console, então ela precisa caber na tela.
+    toast.error(`Falhou: ${String(error?.message ?? error).slice(0, 160)}`);
   }
 
   botao.textContent = rotulo;

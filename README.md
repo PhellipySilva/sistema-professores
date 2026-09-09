@@ -188,6 +188,11 @@ node scripts/gerar-vapid.mjs
 > A chave **privada** nunca entra no `.env` nem no frontend. No bundle, ela deixaria qualquer
 > pessoa enviar notificação em nome do sistema — é o mesmo raciocínio da `service_role`.
 
+> **`VAPID_SUBJECT` precisa do `mailto:`.** É uma URL, não um endereço: `voce@exemplo.com` sozinho
+> faz a função recusar com *"Vapid subject is not a valid URL"* — e a recusa acontece **antes de
+> qualquer envio**, então o agendamento inteiro para de funcionar, todo dia, com o erro visível só
+> no log da função. A função completa o `mailto:` sozinha quando ele falta, mas cadastre certo.
+
 **c) Publicar a função agendada:**
 
 ```bash

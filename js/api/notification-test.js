@@ -46,6 +46,38 @@ export async function sendTestNotification(scenario, daysLate = 3) {
 
   const { data, error } = await supabase.functions.invoke('notificar-mensalidades', { body });
 
-  if (error) throw error;
+  if (error) throw await describeInvokeError(error);
   return data;
+}
+
+/**
+ * Abre o erro do `invoke` e devolve o motivo que o servidor deu.
+ *
+ * Sem isto, toda falha vira o mesmo "FunctionsHttpError: non-2xx status code" —
+ * a mensagem de verdade fica dentro do corpo da resposta, que ninguém lê. E
+ * como este recurso é usado no celular, onde não há console à mão, um erro sem
+ * causa visível custa uma rodada inteira de adivinhação. Foi o que aconteceu
+ * com o "Vapid subject is not a valid URL": a função dizia exatamente o que
+ * estava errado, e a tela mostrava "não foi possível".
+ */
+async function describeInvokeError(error) {
+  const resposta = error?.context;
+  if (!resposta || typeof resposta.text !== 'function') return error;
+
+  try {
+    const texto = await resposta.text();
+    let motivo = texto;
+
+    try {
+      motivo = JSON.parse(texto)?.error ?? texto;
+    } catch {
+      // corpo que não é JSON: o texto cru já serve
+    }
+
+    if (!motivo) return error;
+    return new Error(`${motivo} (HTTP ${resposta.status ?? '?'})`);
+  } catch {
+    // corpo já consumido ou ilegível: fica o erro original
+    return error;
+  }
 }

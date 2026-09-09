@@ -135,7 +135,7 @@ Deno.serve(async (request) => {
     );
 
     webpush.setVapidDetails(
-      Deno.env.get('VAPID_SUBJECT') ?? 'mailto:contato@matchphoint.app',
+      vapidSubject(),
       requiredEnv('VAPID_PUBLIC_KEY'),
       requiredEnv('VAPID_PRIVATE_KEY'),
     );
@@ -484,6 +484,31 @@ async function readJson(request: Request): Promise<any> {
   } catch {
     return {}; // o cron manda '{}', mas uma chamada sem corpo não é erro
   }
+}
+
+/**
+ * O "quem está enviando" que vai no cabeçalho VAPID.
+ *
+ * O `web-push` exige uma URL — `mailto:` ou `https:` —, e recusa um e-mail cru
+ * com "Vapid subject is not a valid URL". O engano é fácil de cometer (o campo
+ * pede um contato, e a pessoa escreve o e-mail) e caro de descobrir: a exceção
+ * acontece ANTES de qualquer envio, então o agendamento passa a falhar inteiro,
+ * todo dia, e o erro só aparece no log da função — ninguém percebe que parou.
+ *
+ * Por isso o `mailto:` é completado aqui, com aviso no log em vez de queda.
+ * Continua valendo cadastrar o segredo já no formato certo.
+ */
+function vapidSubject() {
+  const configurado = (Deno.env.get('VAPID_SUBJECT') ?? '').trim();
+  if (!configurado) return 'mailto:contato@matchphoint.app';
+
+  if (/^(mailto:|https?:\/\/)/i.test(configurado)) return configurado;
+
+  console.warn(
+    `[notificar-mensalidades] VAPID_SUBJECT sem esquema ("${configurado}"); ` +
+      'assumindo mailto:. Corrija o segredo para mailto:' + configurado,
+  );
+  return `mailto:${configurado}`;
 }
 
 function requiredEnv(name: string) {
