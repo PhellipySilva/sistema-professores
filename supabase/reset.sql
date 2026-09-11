@@ -2,7 +2,7 @@
 -- reset.sql — APAGA TUDO e devolve o banco ao estado zero
 -- =============================================================================
 --
--- ⚠️  DESTRUTIVO. Apaga as 16 tabelas do sistema e todos os dados dentro delas.
+-- ⚠️  DESTRUTIVO. Apaga as 17 tabelas do sistema e todos os dados dentro delas.
 --     NÃO apaga usuários (auth.users) nem nada fora do schema public.
 --
 -- Use quando:
@@ -13,7 +13,7 @@
 --
 -- Depois deste arquivo, rode em ordem:
 --   0001_schema.sql → 0002_rls.sql → 0003_triggers.sql → 0004 → 0005 → 0006
---   → 0007 → 0008 → 0009 → 0010 → 0011 → 0012
+--   → 0007 → 0008 → 0009 → 0010 → 0011 → 0012 → 0013
 -- =============================================================================
 
 -- O trigger vive em auth.users, então some antes das tabelas.
@@ -21,6 +21,7 @@ drop trigger if exists on_auth_user_created on auth.users;
 
 -- Ordem inversa das dependências. `cascade` leva junto políticas de RLS,
 -- índices, constraints e triggers de cada tabela.
+drop table if exists public.lesson_notifications  cascade;
 drop table if exists public.payment_notifications cascade;
 drop table if exists public.push_subscriptions    cascade;
 drop table if exists public.waitlist_notifications cascade;

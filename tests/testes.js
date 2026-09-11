@@ -25,6 +25,10 @@ import {
   SLOT_HOURS, buildPushMessages, daysBetween, formatNameList, notificationBody,
   pendingPaymentSituation, slotHourForDate,
 } from '../js/notificacoes/mensalidades.js';
+import {
+  LESSON_KINDS, dueLessonNotification, firstLessonOfDay, lessonNotificationRecord,
+  lessonNotificationTexts, minutesOfTime, professorFirstName,
+} from '../js/notificacoes/aulas.js';
 import { timestampToLocalISODate } from '../js/utils/dates.js';
 import { parseCurrencyToCents, formatCurrency, formatPhone, whatsappLink } from '../js/utils/formatters.js';
 import { validateDueDay } from '../js/utils/validators.js';
@@ -580,6 +584,112 @@ const todosOsTextos = [
   ]).flatMap((m) => [m.title, m.body]),
 ].join(' ');
 eq('nenhum aviso mostra dinheiro', /R\$|\d+,\d{2}/.test(todosOsTextos), false);
+
+/* ---------- AVISOS DE INICIO DE AULA ---------- */
+
+/* 11/09/2026 e uma SEXTA (day_of_week 5). A grade abaixo tem duas aulas nesse
+   dia, em horarios trocados de proposito: a primeira aula e a das 16h, e nao a
+   que aparece primeiro na lista. */
+const gradeSexta = [
+  { class_id: 'T1', day_of_week: 5, start_time: '18:00:00', end_time: '19:00:00', classes: { name: 'Adulto Noite' } },
+  { class_id: 'T2', day_of_week: 5, start_time: '16:00:00', end_time: '17:00:00', classes: { name: 'Kids Tarde' } },
+  { class_id: 'T3', day_of_week: 2, start_time: '07:00:00', end_time: '08:00:00', classes: { name: 'Manha' } },
+];
+
+eq('primeira aula do dia e a mais cedo, nao a primeira da lista',
+  firstLessonOfDay(gradeSexta, [], '2026-09-11').start_time, '16:00:00');
+eq('primeira aula traz a turma certa',
+  firstLessonOfDay(gradeSexta, [], '2026-09-11').class_name, 'Kids Tarde');
+eq('dia sem aula nenhuma nao tem primeira aula',
+  firstLessonOfDay(gradeSexta, [], '2026-09-12'), null);
+eq('grade vazia nao tem primeira aula',
+  firstLessonOfDay([], [], '2026-09-11'), null);
+
+/* Aula CANCELADA nao conta — quem ja descartava era mergeOccurrences. */
+const canceladaDas16 = [{
+  class_id: 'T2', session_date: '2026-09-11', start_time: '16:00:00',
+  end_time: '17:00:00', status: 'canceled', classes: { name: 'Kids Tarde' },
+}];
+eq('aula cancelada cede o lugar para a seguinte',
+  firstLessonOfDay(gradeSexta, canceladaDas16, '2026-09-11').start_time, '18:00:00');
+
+const todasCanceladas = [
+  ...canceladaDas16,
+  { class_id: 'T1', session_date: '2026-09-11', start_time: '18:00:00', end_time: '19:00:00', status: 'canceled', classes: {} },
+];
+eq('dia inteiro cancelado deixa de ter primeira aula',
+  firstLessonOfDay(gradeSexta, todasCanceladas, '2026-09-11'), null);
+
+/* Sessao de OUTRO dia nao pode entrar na conta de hoje. */
+eq('sessao de outra data nao vira primeira aula de hoje',
+  firstLessonOfDay(gradeSexta, [{
+    class_id: 'T9', session_date: '2026-09-10', start_time: '06:00:00',
+    end_time: '07:00:00', status: 'scheduled', classes: {},
+  }], '2026-09-11').start_time, '16:00:00');
+
+/* As duas janelas. Aula as 16h -> avisos as 15h e as 16h. */
+eq('minutesOfTime', minutesOfTime('16:00:00'), 960);
+eq('uma hora antes, em ponto',
+  dueLessonNotification('16:00:00', '15:00'), LESSON_KINDS.ONE_HOUR_BEFORE);
+eq('dentro da hora que antecede',
+  dueLessonNotification('16:00:00', '15:40'), LESSON_KINDS.ONE_HOUR_BEFORE);
+eq('na hora da aula, em ponto',
+  dueLessonNotification('16:00:00', '16:00'), LESSON_KINDS.STARTING_NOW);
+eq('o inicio ganha do aviso de uma hora antes',
+  dueLessonNotification('16:00:00', '16:00') === LESSON_KINDS.ONE_HOUR_BEFORE, false);
+eq('atraso do agendamento ainda cabe na janela de inicio',
+  dueLessonNotification('16:00:00', '16:20'), LESSON_KINDS.STARTING_NOW);
+eq('meia hora depois ja nao avisa',
+  dueLessonNotification('16:00:00', '16:35'), null);
+eq('cedo demais nao avisa', dueLessonNotification('16:00:00', '14:30'), null);
+eq('depois da aula nao avisa', dueLessonNotification('16:00:00', '19:00'), null);
+eq('aula antes da 1h da manha nao tem aviso de uma hora antes',
+  dueLessonNotification('00:30:00', '23:40'), null);
+eq('mas a aula da madrugada ainda avisa na hora',
+  dueLessonNotification('00:30:00', '00:30'), LESSON_KINDS.STARTING_NOW);
+
+/* O texto. */
+eq('titulo de uma hora antes',
+  lessonNotificationTexts(LESSON_KINDS.ONE_HOUR_BEFORE).title,
+  '🎾 Sua primeira aula começa em 1 hora!');
+eq('corpo de uma hora antes',
+  lessonNotificationTexts(LESSON_KINDS.ONE_HOUR_BEFORE).body,
+  'Prepare-se para mais um dia de quadra. Bom trabalho!');
+eq('titulo do inicio',
+  lessonNotificationTexts(LESSON_KINDS.STARTING_NOW).title, '🚀 Hora de começar!');
+eq('corpo do inicio usa o nome do professor',
+  lessonNotificationTexts(LESSON_KINDS.STARTING_NOW, 'Phellipy').body,
+  'Tenha uma ótima jornada de trabalho, Professor Phellipy! Que seja um excelente dia de aulas. 🎾');
+eq('sem nome, a frase continua inteira',
+  lessonNotificationTexts(LESSON_KINDS.STARTING_NOW, '').body,
+  'Tenha uma ótima jornada de trabalho, Professor! Que seja um excelente dia de aulas. 🎾');
+
+/* O nome: primeiro nome, e nunca o apelido do e-mail. */
+eq('saudacao usa o primeiro nome',
+  professorFirstName({ name: 'Phellipy Fernandes', email: 'phellipysilvadev@gmail.com' }), 'Phellipy');
+eq('nome de uma palavra so',
+  professorFirstName({ name: 'Phellipy', email: 'outro@gmail.com' }), 'Phellipy');
+eq('apelido do e-mail nao vira nome',
+  professorFirstName({ name: 'phellipysilvadev', email: 'phellipysilvadev@gmail.com' }), '');
+eq('perfil sem nome nao quebra', professorFirstName({ email: 'a@b.com' }), '');
+eq('perfil ausente nao quebra', professorFirstName(undefined), '');
+
+/* A linha gravada, pronta para o insert. */
+eq('registro do aviso de aula',
+  lessonNotificationRecord(
+    LESSON_KINDS.ONE_HOUR_BEFORE,
+    { start_time: '16:00:00' },
+    'Phellipy',
+    '2026-09-11',
+  ),
+  {
+    kind: 'one_hour_before',
+    lesson_date: '2026-09-11',
+    start_time: '16:00:00',
+    title: '🎾 Sua primeira aula começa em 1 hora!',
+    body: 'Prepare-se para mais um dia de quadra. Bom trabalho!',
+    url: '/pages/agenda.html?date=2026-09-11',
+  });
 
 const failed = results.filter((r) => !r.ok);
 document.title = `${results.length - failed.length}/${results.length} OK`;

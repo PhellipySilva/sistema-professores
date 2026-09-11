@@ -92,6 +92,7 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 10 | `0010_compartilhar_planejamento.sql` | Compartilhar um planejamento com outro professor (tabela `lesson_plan_shares` e função `list_teachers()`) |
 | 11 | `0011_nome_do_professor.sql` | O seletor de compartilhamento mostra o nome do professor, nunca o apelido do e-mail |
 | 12 | `0012_notificacoes_mensalidade.sql` | Avisos de mensalidade: inscrições de push e o registro dos avisos enviados (`push_subscriptions`, `payment_notifications`) |
+| 13 | `0013_notificacoes_aulas.sql` | Avisos de início de aula: a primeira aula do dia do professor (`lesson_notifications`) |
 
 Para conferir que deu certo, rode:
 
@@ -102,7 +103,7 @@ where schemaname = 'public'
 order by tablename;
 ```
 
-Devem aparecer **16 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
+Devem aparecer **17 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
 foi aplicado e os dados estariam expostos — não siga adiante.
 
 > **A migration 0009 troca o significado de `students.category`**: o que era Kids/Adulto passa a
@@ -119,7 +120,7 @@ foi aplicado e os dados estariam expostos — não siga adiante.
 > falhar (por exemplo `relation "profiles" already exists`, sinal de que o script foi colado duas
 > vezes), a transação inteira é desfeita e o banco volta ao que era antes.
 >
-> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 16 tabelas e as funções, é
+> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 17 tabelas e as funções, é
 > seguro em qualquer estado, e depois dele os três arquivos rodam limpos. **É destrutivo:** apaga
 > os dados junto (não mexe nos usuários).
 
@@ -229,6 +230,23 @@ curl -X POST 'https://SEU-PROJETO.supabase.co/functions/v1/notificar-mensalidade
 
 > **iPhone:** o Safari só entrega push para site **instalado na tela de início** (iOS 16.4+).
 > No Android e no desktop funciona com o navegador comum.
+
+### 7. Avisos de início de aula (opcional)
+
+Reaproveitam tudo do passo 6 — as mesmas chaves VAPID, a mesma inscrição do aparelho, o mesmo
+sininho. Falta só publicar a segunda função e agendá-la:
+
+```bash
+npx supabase functions deploy notificar-aulas
+```
+
+Depois, em *Database → Extensions* confira `pg_cron` e `pg_net`, e rode o bloco comentado no fim de
+`supabase/migrations/0013_notificacoes_aulas.sql` (URL do projeto + `service_role` legada).
+
+Este agendamento roda **de 5 em 5 minutos**, e não em horários fixos: a primeira aula de cada
+professor cai numa hora diferente a cada dia da semana, então quem descobre o horário é a função,
+lendo a grade das turmas. Quase toda execução termina em duas consultas baratas e nenhum envio.
+Para gastar menos, troque por `*/10` ou `*/15` no cron — o custo é o aviso chegar mais tarde.
 
 ---
 
@@ -450,6 +468,8 @@ A regra que mantém isso honesto, verificável com um `grep`:
   lotada mediante confirmação
 - [x] **Fase 17** — Avisos de mensalidade: push no celular para vencimento de amanhã, de hoje e
   atraso, com revezamento de horário, agrupamento por situação e central de notificações no sino
+- [x] **Fase 18** — Avisos de início de aula: a primeira aula do dia do professor, uma hora antes e
+  na hora, calculados a partir da grade das turmas
 
 ## Avisos de mensalidade
 
@@ -493,6 +513,46 @@ três horários. Ela **não sabe nenhuma regra financeira**: importa `js/finance
 o aviso junto, e é impossível os dois discordarem.
 
 A configuração está em *Como configurar → 6. Avisos de mensalidade*.
+
+## Avisos de início de aula
+
+Dois avisos por dia de trabalho, calculados a partir da **grade das turmas** — não há horário
+escrito no código, porque a primeira aula de cada professor muda a cada dia da semana.
+
+| Quando | O que chega |
+|---|---|
+| 1 hora antes da primeira aula | **🎾 Sua primeira aula começa em 1 hora!**<br>Prepare-se para mais um dia de quadra. Bom trabalho! |
+| No horário da primeira aula | **🚀 Hora de começar!**<br>Tenha uma ótima jornada de trabalho, Professor [Nome]! Que seja um excelente dia de aulas. 🎾 |
+
+Primeira aula às 16h ⇒ avisos às **15h e 16h**.
+
+**As regras, e onde cada uma mora:**
+
+- **Só a primeira aula do dia**, e só em dia que tem aula. Quem responde "que aulas existem hoje" é
+  `js/agenda/ocorrencias.js` — o mesmo arquivo que desenha o calendário e a lista de aulas de hoje
+  na dashboard. **Aula cancelada não vira aviso** porque aquele arquivo já a descartava; se todas
+  as aulas do dia forem canceladas, o dia deixa de ter primeira aula.
+- **Um aviso de cada tipo por dia.** É o índice único
+  `lesson_notifications (user_id, kind, lesson_date)`, e a linha é gravada *antes* do envio. Dentro
+  da janela de uma hora a função calcula o mesmo aviso umas doze vezes; o que impede os outros onze
+  pushes é o banco.
+- **O nome vem do perfil** (`profiles.name`), no primeiro nome — uma saudação usa primeiro nome. Se
+  o perfil só tiver o apelido do e-mail (o que o trigger grava para quem se cadastrou sem nome), o
+  nome é omitido e a frase continua inteira: *"Tenha uma ótima jornada de trabalho, Professor!"*
+- **O toque abre a agenda do dia** — a tela que responde "e depois desta, o que eu tenho?".
+- **Meia hora de tolerância** no aviso de início, para um atraso do agendamento não fazer o aviso
+  simplesmente não sair. Passou disso, ele não chega: "hora de começar" 40 minutos depois seria
+  pior que o silêncio.
+
+Quem envia é `supabase/functions/notificar-aulas`, **separada** de `notificar-mensalidades`: outra
+função, outro agendamento, outra tabela. Os avisos financeiros não foram tocados, e uma falha aqui
+não os afeta.
+
+No sininho as duas famílias viram **uma lista só**, ordenada por data. São tabelas separadas porque
+descrevem coisas diferentes — uma tem aluno e vencimento, a outra tem o dia do professor —, mas
+para quem abre o sino isso não aparece.
+
+A configuração está em *Como configurar → 7. Avisos de início de aula*.
 
 ## Funcionamento offline
 

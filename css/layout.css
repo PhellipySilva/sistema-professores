@@ -386,6 +386,13 @@
   color: var(--color-danger);
 }
 
+/* Verde é do aviso de aula começando: a única cor do sistema que nunca
+   significou problema, para o aviso mais alegre que ele recebe. */
+.notif-item__icon--success {
+  background-color: var(--color-success-soft);
+  color: var(--color-success);
+}
+
 .notif-item__body {
   flex: 1;
   min-width: 0;
