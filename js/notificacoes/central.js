@@ -348,7 +348,7 @@ function permissionRow(userId) {
   const footer = el('div', { class: 'notif-footer' }, [
     el('p', {
       class: 'notif-footer__hint',
-      text: 'Receba o aviso de mensalidade mesmo com o sistema fechado.',
+      text: 'Receba os avisos de aula e de mensalidade mesmo com o sistema fechado.',
     }),
     button,
   ]);

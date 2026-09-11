@@ -93,6 +93,7 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 11 | `0011_nome_do_professor.sql` | O seletor de compartilhamento mostra o nome do professor, nunca o apelido do e-mail |
 | 12 | `0012_notificacoes_mensalidade.sql` | Avisos de mensalidade: inscrições de push e o registro dos avisos enviados (`push_subscriptions`, `payment_notifications`) |
 | 13 | `0013_notificacoes_aulas.sql` | Avisos de início de aula: a primeira aula do dia do professor (`lesson_notifications`) |
+| 14 | `0014_push_subscriptions_replace.sql` | Inscrição de push refeita no mesmo aparelho substitui as órfãs (`save_push_subscription` com `p_replace_same_device`) |
 
 Para conferir que deu certo, rode:
 

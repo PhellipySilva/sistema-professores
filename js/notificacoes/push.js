@@ -121,8 +121,10 @@ export async function disablePush(userId) {
 async function subscribeAndSave(userId) {
   const registration = await navigator.serviceWorker.ready;
 
+  const existente = await registration.pushManager.getSubscription();
+
   const subscription =
-    (await registration.pushManager.getSubscription()) ??
+    existente ??
     (await registration.pushManager.subscribe({
       // Sem isto o navegador aceitaria push de qualquer servidor que
       // descobrisse o endpoint. Com a chave, só quem tem a privada consegue
@@ -131,7 +133,10 @@ async function subscribeAndSave(userId) {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     }));
 
-  await savePushSubscription(subscription);
+  // Inscrição criada agora: a anterior deste aparelho (se havia) morreu sem
+  // avisar — o serviço de push aceitaria envios para ela e os descartaria.
+  // O banco troca uma pela outra em vez de acumular endpoints mortos.
+  await savePushSubscription(subscription, { replaceSameDevice: !existente });
   return subscription;
 }
 

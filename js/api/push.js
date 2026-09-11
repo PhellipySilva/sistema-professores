@@ -7,7 +7,7 @@
  * Gravar passa por uma função do banco em vez de um upsert direto: o navegador
  * pode ter sido usado por outro professor antes, e só uma função security
  * definer consegue tirar aquele endpoint do dono anterior (ver
- * save_push_subscription na migration 0012). Apagar é `delete` normal — a
+ * save_push_subscription nas migrations 0012 e 0014). Apagar é `delete` normal — a
  * política de RLS já limita cada um às próprias linhas.
  */
 
@@ -17,8 +17,12 @@ import { supabase } from '../supabase.js';
  * Registra (ou atualiza) o navegador atual.
  *
  * @param {PushSubscription} subscription  o objeto devolvido por PushManager
+ * @param {{ replaceSameDevice?: boolean }} [options]
+ *   `replaceSameDevice: true` quando a inscrição acabou de ser CRIADA (e não
+ *   apenas reconfirmada): as linhas anteriores deste mesmo aparelho são órfãs
+ *   e saem do banco junto (ver migration 0014).
  */
-export async function savePushSubscription(subscription) {
+export async function savePushSubscription(subscription, { replaceSameDevice = false } = {}) {
   const json = subscription.toJSON();
 
   const { error } = await supabase.rpc('save_push_subscription', {
@@ -26,6 +30,7 @@ export async function savePushSubscription(subscription) {
     p_p256dh: json.keys?.p256dh,
     p_auth: json.keys?.auth,
     p_user_agent: navigator.userAgent ?? null,
+    p_replace_same_device: replaceSameDevice,
   });
 
   if (error) throw error;

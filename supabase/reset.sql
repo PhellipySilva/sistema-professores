@@ -40,6 +40,7 @@ drop table if exists public.lesson_plans    cascade;
 drop table if exists public.profiles        cascade;
 
 drop function if exists public.save_push_subscription(text, text, text, text);
+drop function if exists public.save_push_subscription(text, text, text, text, boolean);
 drop function if exists public.list_teachers();
 drop function if exists public.handle_new_user();
 drop function if exists public.set_updated_at();

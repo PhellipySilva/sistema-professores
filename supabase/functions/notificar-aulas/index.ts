@@ -43,10 +43,12 @@ import {
   configureWebPush,
   createServiceClient,
   DEFAULT_TIMEZONE,
+  errorResponse,
   groupBy,
   json,
   nowInTimeZone,
   readJson,
+  runQuery,
   selectAll,
   sendToSubscriptions,
 } from '../_shared/push.ts';
@@ -78,20 +80,19 @@ Deno.serve(async (request) => {
     const result = await notifyEveryone(supabase, today, now);
     return json({ ok: true, today, now, ...result });
   } catch (error: any) {
-    console.error('[notificar-aulas] falhou', error);
-    return json({ ok: false, error: String(error?.message ?? error) }, 500);
+    return errorResponse('notificar-aulas', error);
   }
 });
 
 async function notifyEveryone(supabase: any, today: string, now: string) {
   // Sem nenhum navegador registrado não há a quem avisar, e nem vale ler a
   // grade de ninguém. É a saída barata da maioria das execuções.
-  const subscriptions = await selectAll(() =>
+  const subscriptions = await selectAll('push_subscriptions', () =>
     supabase.from('push_subscriptions').select('id, user_id, endpoint, p256dh, auth'),
   );
 
   if (subscriptions.length === 0) {
-    return { professores: 0, avisos: 0, enviados: 0, falhas: 0 };
+    return { professores: 0, avisos: 0, enviados: 0, falhas: 0, detalhes: [] };
   }
 
   const subsByUser = groupBy(subscriptions, (row) => row.user_id);
@@ -103,7 +104,7 @@ async function notifyEveryone(supabase: any, today: string, now: string) {
      tabela (0 = domingo), como diz o comentário da migration 0001. */
   const dayOfWeek = getDayOfWeek(today);
 
-  const schedules = await selectAll(() =>
+  const schedules = await selectAll('class_schedules', () =>
     supabase
       .from('class_schedules')
       .select(SCHEDULE_COLUMNS)
@@ -113,7 +114,7 @@ async function notifyEveryone(supabase: any, today: string, now: string) {
 
   if (schedules.length === 0) {
     // Ninguém dá aula hoje. "Não enviar em dias sem aula" começa aqui.
-    return { professores: userIds.length, avisos: 0, enviados: 0, falhas: 0 };
+    return { professores: userIds.length, avisos: 0, enviados: 0, falhas: 0, detalhes: [] };
   }
 
   const schedulesByUser = groupBy(schedules, (row) => row.user_id);
@@ -121,7 +122,7 @@ async function notifyEveryone(supabase: any, today: string, now: string) {
 
   /* As aulas já materializadas de hoje — é o que permite excluir as CANCELADAS.
      Só as de hoje, e só de quem tem aula hoje. */
-  const sessions = await selectAll(() =>
+  const sessions = await selectAll('class_sessions', () =>
     supabase
       .from('class_sessions')
       .select('user_id, class_id, session_date, start_time, end_time, status')
@@ -132,7 +133,7 @@ async function notifyEveryone(supabase: any, today: string, now: string) {
   const sessionsByUser = groupBy(sessions, (row) => row.user_id);
 
   // O nome vai na saudação do segundo aviso. Uma consulta para todos.
-  const profiles = await selectAll(() =>
+  const profiles = await selectAll('profiles', () =>
     supabase.from('profiles').select('id, name, email').in('id', comAulaHoje),
   );
 
@@ -141,6 +142,9 @@ async function notifyEveryone(supabase: any, today: string, now: string) {
   let avisos = 0;
   let enviados = 0;
   let falhas = 0;
+  // O que cada serviço de push respondeu, inscrição por inscrição — vai na
+  // resposta para `net._http_response` contar a história inteira.
+  const detalhes: any[] = [];
 
   for (const userId of comAulaHoje) {
     const daGrade = schedulesByUser.get(userId) ?? [];
@@ -170,9 +174,10 @@ async function notifyEveryone(supabase: any, today: string, now: string) {
 
     enviados += resultado.enviados;
     falhas += resultado.falhas;
+    detalhes.push(...resultado.detalhes);
   }
 
-  return { professores: comAulaHoje.length, avisos, enviados, falhas };
+  return { professores: comAulaHoje.length, avisos, enviados, falhas, detalhes };
 }
 
 /**
@@ -185,14 +190,17 @@ async function notifyEveryone(supabase: any, today: string, now: string) {
  * simultâneas passariam por uma consulta, mas não pelo índice.
  */
 async function registerNotification(supabase: any, userId: string, record: any) {
-  const { data, error } = await supabase
-    .from('lesson_notifications')
-    .upsert({ user_id: userId, ...record }, {
-      onConflict: 'user_id,kind,lesson_date',
-      ignoreDuplicates: true,
-    })
-    .select('id');
+  // Repetir este upsert num 504 é seguro: se a primeira tentativa chegou ao
+  // banco, a segunda encontra a linha e devolve zero inseridos — sem push duplo.
+  const data = await runQuery('lesson_notifications', () =>
+    supabase
+      .from('lesson_notifications')
+      .upsert({ user_id: userId, ...record }, {
+        onConflict: 'user_id,kind,lesson_date',
+        ignoreDuplicates: true,
+      })
+      .select('id'),
+  );
 
-  if (error) throw error;
-  return (data ?? []).length > 0;
+  return data.length > 0;
 }
