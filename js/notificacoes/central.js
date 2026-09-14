@@ -313,12 +313,27 @@ function whenLabel(iso) {
  *
  * Fica escondida no caso normal (permissão concedida): o rodapé só aparece
  * quando ele tem algo a dizer.
+ *
+ * `unconfigured` NÃO fica escondido. Já ficou, e o resultado foi um build
+ * publicado sem a VITE_VAPID_PUBLIC_KEY em que o botão de ativar sumiu para
+ * todos os professores sem nenhuma pista na tela — o sininho listava os avisos
+ * normalmente e ninguém tinha como ligar o push. A frase abaixo é o sintoma
+ * visível desse esquecimento.
  */
 function permissionRow(userId) {
   const status = pushStatus();
 
-  if (status === 'granted' || status === 'unconfigured') {
+  if (status === 'granted') {
     return el('div', { class: 'hidden' });
+  }
+
+  if (status === 'unconfigured') {
+    return el('div', { class: 'notif-footer' }, [
+      el('p', {
+        class: 'notif-footer__hint',
+        text: 'Avisos no aparelho indisponíveis nesta versão (chave de push não configurada no build).',
+      }),
+    ]);
   }
 
   if (status === 'unsupported') {
