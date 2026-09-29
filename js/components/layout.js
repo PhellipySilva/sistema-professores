@@ -21,8 +21,9 @@ import logoMatchPhoint from '../../assets/brand/matchphoint.png';
 
 /** Navegação principal (spec, seção 24). Cinco itens — nem um a mais.
  *
- * "Alunos" é o único com SUBITENS: Alunos ativos e Alunos afastados são a mesma
- * tela com dois conjuntos de alunos, e por isso não viram um sexto item do menu.
+ * "Alunos" e "Turmas" têm SUBITENS: Alunos ativos e Alunos afastados são a mesma
+ * tela com dois conjuntos de alunos; Turmas e Aulas avulsas são as duas formas
+ * de dar aula. Nenhum deles vira um sexto item do menu.
  * Eles nascem RECOLHIDOS, atrás do chevron ao lado do item — o menu continua
  * com cinco linhas até alguém pedir para ver as duas. */
 export const NAV_ITEMS = [
@@ -38,7 +39,19 @@ export const NAV_ITEMS = [
       { label: 'Alunos afastados', href: '/pages/alunos.html?tipo=afastados' },
     ],
   },
-  { id: 'turmas', label: 'Turmas', fullLabel: 'Turmas', href: '/pages/turmas.html', icon: 'users' },
+  {
+    id: 'turmas',
+    label: 'Turmas',
+    fullLabel: 'Turmas',
+    href: '/pages/turmas.html',
+    icon: 'users',
+    // Aulas avulsas são aula fora de turma — assunto da mesma seção, então
+    // entram como subitem, do mesmo jeito que os dois conjuntos de alunos.
+    children: [
+      { label: 'Turmas', href: '/pages/turmas.html' },
+      { label: 'Aulas avulsas', href: '/pages/aulas-avulsas.html' },
+    ],
+  },
   { id: 'agenda', label: 'Agenda', fullLabel: 'Agenda', href: '/pages/agenda.html', icon: 'calendar' },
   { id: 'planejamentos', label: 'Planos', fullLabel: 'Planejamentos', href: '/pages/planejamentos.html', icon: 'clipboard' },
 ];
@@ -51,6 +64,7 @@ const SECTION_OF = {
   // A lista de espera é uma tela de turma: entra pelo botão da página de turmas
   // e mantém o destaque nesse item, sem virar um sexto item no menu.
   'lista-espera': 'turmas',
+  'aulas-avulsas': 'turmas',
 };
 
 export const BRAND = { name: 'MatchPhoint', tagline: 'Gestão de aulas' };

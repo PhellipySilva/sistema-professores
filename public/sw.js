@@ -37,6 +37,7 @@ const APP_SHELL = [
   '/pages/turmas.html',
   '/pages/turma.html',
   '/pages/lista-espera.html',
+  '/pages/aulas-avulsas.html',
   '/pages/agenda.html',
   '/pages/aula.html',
   '/pages/planejamentos.html',

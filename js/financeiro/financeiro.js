@@ -225,6 +225,7 @@ export function buildInitialPayment({ referenceMonth, monthlyFeeCents, dueDay },
 
 /**
  * Previsto, recebido, a receber e as contagens de alunos do mês corrente.
+ * (Só mensalidades. As aulas avulsas entram depois, por addDropInToSummary.)
  *
  * As três quantias respondem a perguntas DIFERENTES, e é isso que faz a conta
  * ser útil:
@@ -279,5 +280,32 @@ export function monthlySummary(students, payments, todayIso = todayISO()) {
     studentCount: students.length,
     payingCount,
     sponsoredCount,
+  };
+}
+
+/**
+ * Acrescenta as aulas avulsas do mês ao resumo de `monthlySummary`.
+ *
+ * Não é uma segunda conta financeira: o resumo das mensalidades chega pronto e
+ * intacto, e as avulsas só SOMAM a ele. Os totais delas vêm de
+ * `dropInTotalsForMonth` (js/avulsas/avulsas.js), calculados na hora a partir
+ * dos participantes — nada é lançado em `payments`.
+ *
+ * O "a receber" das avulsas entra somado À PARTE, e não por dentro do piso em
+ * zero das mensalidades: um mês em que se recebeu mensalidade a mais não pode
+ * esconder o aluno avulso que ainda não pagou.
+ *
+ * @param {object} summary  resultado de monthlySummary
+ * @param {{totalCents: number, receivedCents: number, toReceiveCents: number}} dropIn
+ */
+export function addDropInToSummary(summary, dropIn) {
+  const totals = dropIn ?? { totalCents: 0, receivedCents: 0, toReceiveCents: 0 };
+
+  return {
+    ...summary,
+    expectedCents: summary.expectedCents + totals.totalCents,
+    receivedCents: summary.receivedCents + totals.receivedCents,
+    toReceiveCents: summary.toReceiveCents + totals.toReceiveCents,
+    dropInCents: totals.totalCents,
   };
 }

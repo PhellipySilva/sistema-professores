@@ -9,6 +9,7 @@ import {
   normalizeEnrollmentDays, reconcileDays, studentsForDay,
 } from '../js/turmas/matriculas.js';
 import {
+  addDropInToSummary,
   billingStartDate, buildInitialPayment, dueDateForMonth, enrollmentMonth, isBillable,
   isValidDueDay, monthlySummary, paymentStatus, recentReferenceMonths,
   selectableReferenceMonths, studentFinancialStatus,
@@ -30,6 +31,10 @@ import {
   lessonNotificationTexts, minutesOfTime, professorFirstName,
 } from '../js/notificacoes/aulas.js';
 import { timestampToLocalISODate } from '../js/utils/dates.js';
+import {
+  dropInTotalsForMonth, filterLessons, formatDuration, lessonEndTime, lessonPaymentStatus,
+  lessonTotals, sortLessons, validateParticipants,
+} from '../js/avulsas/avulsas.js';
 import { parseCurrencyToCents, formatCurrency, formatPhone, whatsappLink } from '../js/utils/formatters.js';
 import { validateDueDay } from '../js/utils/validators.js';
 
@@ -303,6 +308,62 @@ eq('a receber nunca fica negativo', monthlySummary(elenco, extra, '2026-08-17').
 const sopatrocinados = [{ id: 'X', sponsored: true, monthly_fee_cents: 15000, due_day: 5, created_at: '2026-01-01T12:00:00.000Z' }];
 eq('so patrocinados: previsto zero', monthlySummary(sopatrocinados, [], '2026-08-17').expectedCents, 0);
 eq('so patrocinados: continuam contados', monthlySummary(sopatrocinados, [], '2026-08-17').studentCount, 1);
+
+/* ---------- AULAS AVULSAS ---------- */
+/* O exemplo do pedido: Joao 40 pago, Maria 40 nao pago, Pedro 50 pago. */
+const avulsaSet = {
+  id: 'L1', lesson_date: '2026-09-28', start_time: '19:00:00', duration_minutes: 60,
+  drop_in_participants: [
+    { id: 'p1', name: 'Joao', amount_cents: 4000, paid: true },
+    { id: 'p2', name: 'Maria', amount_cents: 4000, paid: false },
+    { id: 'p3', name: 'Pedro', amount_cents: 5000, paid: true },
+  ],
+};
+const avulsaOut = {
+  id: 'L2', lesson_date: '2026-10-02', start_time: '08:00:00', duration_minutes: 90,
+  drop_in_participants: [{ id: 'p4', name: 'Ana', amount_cents: 6000, paid: true }],
+};
+
+eq('avulsa: total, recebido e a receber', lessonTotals(avulsaSet),
+  { totalCents: 13000, receivedCents: 9000, toReceiveCents: 4000 });
+eq('avulsa com alguem sem pagar esta pendente', lessonPaymentStatus(avulsaSet), 'pending');
+eq('avulsa toda paga esta quitada', lessonPaymentStatus(avulsaOut), 'paid');
+eq('avulsa cortesia (valor zero) esta quitada',
+  lessonPaymentStatus({ drop_in_participants: [{ name: 'X', amount_cents: 0, paid: false }] }), 'paid');
+eq('avulsa conta pelo mes da DATA DA AULA',
+  dropInTotalsForMonth([avulsaSet, avulsaOut], '2026-09-15'),
+  { totalCents: 13000, receivedCents: 9000, toReceiveCents: 4000 });
+eq('mes sem avulsa soma zero', dropInTotalsForMonth([avulsaSet], '2026-08-01'),
+  { totalCents: 0, receivedCents: 0, toReceiveCents: 0 });
+eq('filtro por mes', filterLessons([avulsaSet, avulsaOut], { month: '2026-10' }).map((l) => l.id), ['L2']);
+eq('filtro por pendencia', filterLessons([avulsaSet, avulsaOut], { status: 'pending' }).map((l) => l.id), ['L1']);
+eq('filtro por quitadas', filterLessons([avulsaSet, avulsaOut], { status: 'paid' }).map((l) => l.id), ['L2']);
+eq('mais recente primeiro', sortLessons([avulsaSet, avulsaOut]).map((l) => l.id), ['L2', 'L1']);
+eq('fim da aula', lessonEndTime(avulsaOut), '09:30:00');
+eq('duracao 1h', formatDuration(60), '1h');
+eq('duracao 1h30', formatDuration(90), '1h30');
+eq('duracao 45 min', formatDuration(45), '45 min');
+eq('participante sem nome e recusado', validateParticipants([{ name: ' ', amount_cents: 4000 }]) !== null, true);
+eq('participante sem valor e recusado', validateParticipants([{ name: 'Joao', amount_cents: null }]) !== null, true);
+eq('aula sem participante e recusada', validateParticipants([]) !== null, true);
+eq('participantes validos passam', validateParticipants([{ name: 'Joao', amount_cents: 4000 }]), null);
+
+/* Integracao com o financeiro: SOMA ao resumo das mensalidades, sem alterar a regra dele. */
+const comAvulsa = addDropInToSummary(resumoMes, lessonTotals(avulsaSet));
+eq('previsto = mensalidades + avulsas', comAvulsa.expectedCents, 58000 + 13000);
+eq('recebido = baixas + avulsas pagas', comAvulsa.receivedCents, 30000 + 9000);
+eq('a receber = mensalidades + avulsas pendentes', comAvulsa.toReceiveCents, 28000 + 4000);
+eq('contagens de alunos nao mudam', [comAvulsa.payingCount, comAvulsa.sponsoredCount], [4, 1]);
+eq('resumo original intacto', resumoMes.expectedCents, 58000);
+eq('sem avulsa, resumo igual ao de sempre',
+  addDropInToSummary(resumoMes, dropInTotalsForMonth([], '2026-08-17')).toReceiveCents, 28000);
+/* Mensalidade recebida a mais NAO esconde o avulso que ainda nao pagou. */
+eq('piso das mensalidades nao engole a avulsa pendente',
+  addDropInToSummary(monthlySummary(elenco, extra, '2026-08-17'), lessonTotals(avulsaSet)).toReceiveCents, 4000);
+/* Marcar Maria como paga: o mesmo valor passa de a receber para recebido, sem duplicar. */
+const mariaPagou = { ...avulsaSet, drop_in_participants: avulsaSet.drop_in_participants.map((p) => ({ ...p, paid: true })) };
+eq('pagar nao duplica o previsto', addDropInToSummary(resumoMes, lessonTotals(mariaPagou)).expectedCents, 71000);
+eq('pagar move para recebido', addDropInToSummary(resumoMes, lessonTotals(mariaPagou)).receivedCents, 43000);
 
 /* ---------- VAGA NA TURMA ---------- */
 eq('sem capacidade definida, sempre ha vaga', hasVacancy(null, 12), true);

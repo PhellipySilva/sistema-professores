@@ -94,6 +94,7 @@ No painel do Supabase, abra o **SQL Editor** e execute os arquivos de `supabase/
 | 12 | `0012_notificacoes_mensalidade.sql` | Avisos de mensalidade: inscrições de push e o registro dos avisos enviados (`push_subscriptions`, `payment_notifications`) |
 | 13 | `0013_notificacoes_aulas.sql` | Avisos de início de aula: a primeira aula do dia do professor (`lesson_notifications`) |
 | 14 | `0014_push_subscriptions_replace.sql` | Inscrição de push refeita no mesmo aparelho substitui as órfãs (`save_push_subscription` com `p_replace_same_device`) |
+| 15 | `0015_aulas_avulsas.sql` | Aulas avulsas: `drop_in_lessons`, `drop_in_participants` e a função `save_drop_in_lesson` (salva aula + participantes numa transação) |
 
 Para conferir que deu certo, rode:
 
@@ -104,7 +105,7 @@ where schemaname = 'public'
 order by tablename;
 ```
 
-Devem aparecer **17 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
+Devem aparecer **19 tabelas, todas com `rowsecurity = true`**. Se alguma vier `false`, o RLS não
 foi aplicado e os dados estariam expostos — não siga adiante.
 
 > **A migration 0009 troca o significado de `students.category`**: o que era Kids/Adulto passa a
@@ -121,7 +122,7 @@ foi aplicado e os dados estariam expostos — não siga adiante.
 > falhar (por exemplo `relation "profiles" already exists`, sinal de que o script foi colado duas
 > vezes), a transação inteira é desfeita e o banco volta ao que era antes.
 >
-> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 17 tabelas e as funções, é
+> Se algo parar no meio, rode `supabase/reset.sql` — ele apaga as 19 tabelas e as funções, é
 > seguro em qualquer estado, e depois dele os três arquivos rodam limpos. **É destrutivo:** apaga
 > os dados junto (não mexe nos usuários).
 
@@ -471,6 +472,32 @@ A regra que mantém isso honesto, verificável com um `grep`:
   atraso, com revezamento de horário, agrupamento por situação e central de notificações no sino
 - [x] **Fase 18** — Avisos de início de aula: a primeira aula do dia do professor, uma hora antes e
   na hora, calculados a partir da grade das turmas
+- [x] **Fase 19** — Aulas avulsas: aula fora das turmas com participantes que não precisam ser
+  alunos, valor e pagamento por participante, somadas ao financeiro do mês
+
+## Aulas avulsas
+
+Em **Turmas → Aulas avulsas**. Cada aula tem data, horário, duração e uma lista de participantes —
+nome, valor e **Pago / Não pago**. O participante **não é aluno**: não aparece em Alunos, não entra
+em turma, chamada nem aviso de mensalidade.
+
+| Aula 28/09 às 19h — 1h | |
+|---|---|
+| João — R$ 40 — Pago · Maria — R$ 40 — Não pago · Pedro — R$ 50 — Pago | **Total** R$ 130 · **Recebido** R$ 90 · **A receber** R$ 40 |
+
+**No financeiro da dashboard**, pelo mês da **data da aula**:
+
+| Financeiro | Soma das avulsas |
+|---|---|
+| Previsto | todos os participantes |
+| Recebido | os marcados como pagos |
+| A receber | os não pagos (somado à parte, fora do piso em zero das mensalidades) |
+
+Nada é lançado em `payments`: os valores são somados na hora a partir dos participantes
+(`addDropInToSummary` em `js/financeiro/financeiro.js`, sobre o resultado intacto de
+`monthlySummary`). Por isso marcar pago, mudar valor ou data e excluir a aula se refletem no próximo
+carregamento, sem duplicar nada. Sem a migration 0015 aplicada, a dashboard continua funcionando
+com as mensalidades.
 
 ## Avisos de mensalidade
 

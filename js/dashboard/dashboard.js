@@ -20,6 +20,7 @@ import { listSessionsBetween } from '../api/sessions.js';
 import { listPaymentsSince, upsertPayment } from '../api/payments.js';
 import { listOpenMakeups } from '../api/makeups.js';
 import { listOpenNotifications } from '../api/waitlist.js';
+import { listDropInLessonsBetween } from '../api/drop-in-lessons.js';
 import { errorState } from '../components/empty-state.js';
 import { selectField, showFieldErrors } from '../components/form.js';
 import { icon } from '../components/icons.js';
@@ -39,6 +40,7 @@ import {
 } from '../utils/dates.js';
 import { formatCurrency, pluralize } from '../utils/formatters.js';
 import {
+  addDropInToSummary,
   dueDateForMonth,
   groupPaymentsByStudent,
   isBillable,
@@ -48,6 +50,7 @@ import {
 } from '../financeiro/financeiro.js';
 import { openPaymentModal } from '../financeiro/financeiro-ui.js';
 import { mergeOccurrences, plannedOccurrencesForMonth } from '../agenda/ocorrencias.js';
+import { dropInTotalsForMonth } from '../avulsas/avulsas.js';
 
 const { user } = await initPage('dashboard');
 
@@ -60,7 +63,7 @@ async function load() {
   showLoading(content, 'Carregando dashboard...');
 
   try {
-    const [students, classes, schedules, sessions, payments, makeups, vacancies] =
+    const [students, classes, schedules, sessions, payments, makeups, vacancies, dropIns] =
       await Promise.all([
         listStudents(user.id),
         listClasses(user.id),
@@ -69,6 +72,14 @@ async function load() {
         listPaymentsSince(user.id, recentReferenceMonths()[0]),
         listOpenMakeups(user.id),
         listOpenNotifications(user.id),
+        /* As aulas avulsas são um acréscimo ao financeiro, não a base dele:
+           falhar aqui (o caso provável é a migration 0015 ainda não aplicada)
+           não pode derrubar a dashboard. O erro vai para o console e o
+           financeiro mostra só as mensalidades, como antes. */
+        listDropInLessonsBetween(user.id, startOfMonth(today), endOfMonth(today)).catch((error) => {
+          handleError(error, 'Não foi possível carregar as aulas avulsas.');
+          return [];
+        }),
       ]);
 
     /* O dashboard é a tela dos alunos ATIVOS: quem está afastado não conta em
@@ -88,6 +99,7 @@ async function load() {
       payments: activePayments,
       makeups,
       vacancies,
+      dropIns,
     });
   } catch (error) {
     handleError(error, 'Não foi possível carregar o dashboard.');
@@ -95,7 +107,7 @@ async function load() {
   }
 }
 
-function renderDashboard({ students, classes, schedules, sessions, payments, makeups, vacancies }) {
+function renderDashboard({ students, classes, schedules, sessions, payments, makeups, vacancies, dropIns }) {
   const paymentsByStudent = groupPaymentsByStudent(payments);
 
   const overdue = students.filter(
@@ -107,7 +119,7 @@ function renderDashboard({ students, classes, schedules, sessions, payments, mak
 
   render(content, [
     statsGrid({ students, classes, todayClasses, overdue }),
-    financeSection(monthlySummary(students, payments)),
+    financeSection(addDropInToSummary(monthlySummary(students, payments), dropInTotalsForMonth(dropIns, today))),
     shortcuts(students),
     vacanciesSection(vacancies),
     todaySection(todayClasses),
@@ -211,11 +223,17 @@ function statsGrid({ students, classes, todayClasses, overdue }) {
  * estes cartões no próximo carregamento, sem nenhum passo extra.
  */
 function financeSection(summary) {
+  // Com aula avulsa no mês, o rótulo diz quanto dela está dentro do previsto —
+  // senão o número deixaria de bater com a soma das mensalidades sem explicação.
+  const hasDropIn = summary.dropInCents > 0;
+
   const cards = [
     {
       label: 'Valor previsto',
       value: formatCurrency(summary.expectedCents),
-      hint: 'Soma das mensalidades de quem é cobrado',
+      hint: hasDropIn
+        ? `Mensalidades + ${formatCurrency(summary.dropInCents)} de aulas avulsas`
+        : 'Soma das mensalidades de quem é cobrado',
       iconName: 'wallet',
       // Os três valores do mês têm a cor no número, porque nesta grade a cor é
       // informação: azul é o previsto, verde é o que entrou, laranja é o que
@@ -227,7 +245,9 @@ function financeSection(summary) {
     {
       label: 'Valor recebido',
       value: formatCurrency(summary.receivedCents),
-      hint: 'Pagamentos com baixa registrada neste mês',
+      hint: hasDropIn
+        ? 'Mensalidades com baixa e aulas avulsas pagas'
+        : 'Pagamentos com baixa registrada neste mês',
       iconName: 'trendUp',
       variant: 'success',
       highlight: true,

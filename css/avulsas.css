@@ -1,0 +1,183 @@
+/* Aulas avulsas — carregado SÓ por pages/aulas-avulsas.html.
+ *
+ * Tudo aqui tem o prefixo .dropin- e usa apenas as variáveis de variables.css:
+ * nenhuma cor solta, e nenhuma regra que alcance outra tela. Cards, selos,
+ * botões, filtros e indicadores são os de components.css, sem alteração. */
+
+/* ---------- Barra de filtros ---------- */
+
+.dropin-toolbar {
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.dropin-toolbar .filter-bar {
+  margin-bottom: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dropin-toolbar__month {
+  width: auto;
+  min-width: 190px;
+  max-width: 100%;
+}
+
+/* Três indicadores: numa grade de quatro colunas sobraria um buraco. */
+@media (min-width: 641px) {
+  .grid-stats.dropin-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ---------- Card da aula ---------- */
+
+.dropin-card {
+  min-width: 0;
+}
+
+.dropin-participants {
+  margin-top: var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.dropin-participant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-3);
+}
+
+.dropin-participant + .dropin-participant {
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.dropin-participant__info {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+
+.dropin-participant__name {
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.dropin-participant__amount {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* O selo-botão precisa de alvo de toque de verdade, não de 20px de altura. */
+.dropin-participant .badge--button {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding-inline: var(--space-3);
+}
+
+/* ---------- Total · Recebido · A receber ---------- */
+
+.dropin-totals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.dropin-totals__item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dropin-totals__label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.dropin-totals__value {
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dropin-totals__item--success .dropin-totals__value {
+  color: var(--color-success);
+}
+
+.dropin-totals__item--warning .dropin-totals__value {
+  color: var(--color-warning);
+}
+
+/* ---------- Modal ---------- */
+
+.dropin-form__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.dropin-editor {
+  gap: var(--space-3);
+}
+
+.dropin-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Nome ocupa o que sobra; valor, "Pago" e remover têm largura própria. */
+.dropin-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7rem auto auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dropin-editor__paid-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--tap-target);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.dropin-editor .btn--sm {
+  align-self: flex-start;
+}
+
+.dropin-editor__summary {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-alt);
+}
+
+.dropin-editor__summary .dropin-totals {
+  margin-top: 0;
+}
+
+/* Celular: o nome ganha a linha inteira, e valor + pago + remover descem. */
+@media (max-width: 480px) {
+  .dropin-form__pair {
+    grid-template-columns: 1fr;
+  }
+
+  .dropin-editor__row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding-bottom: var(--space-2);
+    border-bottom: var(--border-width) solid var(--color-border);
+  }
+
+  .dropin-editor__name {
+    grid-column: 1 / -1;
+  }
+}

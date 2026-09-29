@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>Aulas avulsas · MatchPhoint</title>
+    <link rel="icon" href="../assets/brand/matchphoint-mark.png" type="image/png" />
+    <!-- PWA: sem o manifest e o Service Worker (js/offline/register-sw.js), o
+         navegador nem executa JavaScript quando está offline. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-256.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="MatchPhoint" />
+    <link rel="stylesheet" href="/css/variables.css" />
+    <link rel="stylesheet" href="/css/reset.css" />
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/responsive.css" />
+    <!-- Só esta página carrega: nenhuma outra tela muda por causa dele. -->
+    <link rel="stylesheet" href="/css/avulsas.css" />
+  </head>
+  <body class="app-booting">
+    <a class="skip-link" href="#page-content">Pular para o conteúdo</a>
+    <div id="app-shell"></div>
+
+    <main class="app-main">
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1 class="page-title" id="page-title">Aulas avulsas</h1>
+          <p class="page-subtitle hidden" id="page-subtitle"></p>
+        </div>
+        <div class="page-header__actions" id="page-actions"></div>
+      </header>
+      <div class="page-content" id="page-content"></div>
+    </main>
+
+    <script type="module" src="/js/avulsas/aulas-avulsas.js"></script>
+  </body>
+</html>
