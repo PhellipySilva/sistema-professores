@@ -33,6 +33,14 @@ export function freeSlots(capacity, activeCount) {
   return Math.max(0, capacity - activeCount);
 }
 
+/** '2 vagas livres' · '1 vaga livre' · 'Turma cheia' · 'Sem limite de vagas' */
+export function formatFreeSlots(capacity, activeCount) {
+  const free = freeSlots(capacity, activeCount);
+  if (free === null) return 'Sem limite de vagas';
+  if (free === 0) return 'Turma cheia';
+  return `${free} vaga${free === 1 ? '' : 's'} livre${free === 1 ? '' : 's'}`;
+}
+
 /** '7/8 alunos' quando há capacidade; '7 alunos matriculados' quando não há. */
 export function formatOccupancy(activeCount, capacity) {
   if (capacity === null || capacity === undefined) {

@@ -12,6 +12,7 @@ import { $, el, render } from '../utils/dom.js';
 import { classCard, openClassModal, sortClassesByTime, weekdayFilterBar } from './turmas-ui.js';
 import { notifyVacancy } from '../lista-espera/notificacoes.js';
 import { weekdayName } from '../utils/dates.js';
+import { openStudentMenu } from './transferencia.js';
 
 const { user } = await initPage('turmas');
 
@@ -165,7 +166,11 @@ function renderResults() {
       text: `${list.length} turma${list.length > 1 ? 's' : ''}`,
     }),
     el('div', { class: 'grid-cards' }, list.map((turma) =>
-      classCard(turma, { onEdit: openEdit, onDelete: confirmDelete }),
+      classCard(turma, {
+        onEdit: openEdit,
+        onDelete: confirmDelete,
+        onStudent: (student) => openStudentMenu({ userId: user.id, student, turma, onChanged: load }),
+      }),
     )),
   ]);
 }

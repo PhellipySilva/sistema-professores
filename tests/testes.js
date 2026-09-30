@@ -15,7 +15,7 @@ import {
   selectableReferenceMonths, studentFinancialStatus,
 } from '../js/financeiro/financeiro.js';
 import {
-  formatOccupancy, freeSlots, groupWaitlistByClass, hasVacancy, isFull, wantsClass,
+  formatFreeSlots, formatOccupancy, freeSlots, groupWaitlistByClass, hasVacancy, isFull, wantsClass,
 } from '../js/lista-espera/vagas.js';
 import { earliestStartTime, scheduleShort, sortClassesByTime } from '../js/turmas/turmas-ui.js';
 import { matchesStudentFilters, summarizeStudents } from '../js/alunos/alunos-ui.js';
@@ -376,6 +376,10 @@ eq('vagas livres sem capacidade', freeSlots(null, 10), null);
 eq('ocupacao com capacidade', formatOccupancy(7, 8), '7/8 alunos');
 eq('ocupacao sem capacidade', formatOccupancy(4, null), '4 alunos matriculados');
 eq('ocupacao singular', formatOccupancy(1, null), '1 aluno matriculado');
+eq('vagas livres, texto plural', formatFreeSlots(8, 6), '2 vagas livres');
+eq('vagas livres, texto singular', formatFreeSlots(8, 7), '1 vaga livre');
+eq('vagas livres, turma cheia', formatFreeSlots(8, 8), 'Turma cheia');
+eq('vagas livres, sem limite', formatFreeSlots(null, 3), 'Sem limite de vagas');
 
 /* ---------- ORDEM DA LISTA DE ESPERA ---------- */
 const noite = {

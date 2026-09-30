@@ -1,7 +1,7 @@
 /* Agenda: calendário mensal e aulas do dia (spec, seção 17). */
 
 import { handleError, initPage } from '../app.js';
-import { listAllSchedules } from '../api/classes.js';
+import { listAllSchedules, listClasses } from '../api/classes.js';
 import { ensureSession, listSessionsBetween } from '../api/sessions.js';
 import { errorState } from '../components/empty-state.js';
 import { icon } from '../components/icons.js';
@@ -13,6 +13,7 @@ import {
   endOfMonth,
   formatDateLongBR,
   formatTimeRange,
+  getDayOfWeek,
   isToday,
   monthLabel,
   startOfMonth,
@@ -20,6 +21,9 @@ import {
   weekdayShort,
 } from '../utils/dates.js';
 import { formatCategory } from '../utils/formatters.js';
+import { formatFreeSlots, formatOccupancy } from '../lista-espera/vagas.js';
+import { studentsForDay } from '../turmas/matriculas.js';
+import { studentChips } from '../turmas/turmas-ui.js';
 import {
   calendarWeeks,
   datesWithClasses,
@@ -35,6 +39,9 @@ const content = $('#page-content');
 let selectedDate = getQueryParam('date') ?? todayISO();
 let currentMonth = startOfMonth(selectedDate);
 let schedules = [];
+/* Turma por id, com os alunos matriculados: é o que cada aula do dia usa para
+   mostrar quem vem e quantas vagas sobram. */
+let classById = new Map();
 let occurrencesByDate = new Map();
 let markedDates = new Set();
 
@@ -50,7 +57,12 @@ async function loadMonth() {
   try {
     // Os horários mudam pouco: busca uma vez e reaproveita ao trocar de mês.
     if (schedules.length === 0) {
-      schedules = await listAllSchedules(user.id);
+      const [allSchedules, classes] = await Promise.all([
+        listAllSchedules(user.id),
+        listClasses(user.id),
+      ]);
+      schedules = allSchedules;
+      classById = new Map(classes.map((turma) => [turma.id, turma]));
     }
 
     const sessions = await listSessionsBetween(
@@ -153,8 +165,13 @@ function dayCard() {
 
 function occurrenceRow(occurrence) {
   const isMaterialized = Boolean(occurrence.session);
+  const turma = classById.get(occurrence.class_id);
 
-  return el('button', {
+  // Só quem frequenta NESTE dia da semana: numa turma de segunda e quinta, o
+  // aluno "só quinta" não aparece na aula de segunda.
+  const attending = turma ? studentsForDay(turma.students ?? [], getDayOfWeek(occurrence.date)) : null;
+
+  const row = el('button', {
     type: 'button',
     class: 'list-item list-item--button',
     onclick: () => openSession(occurrence),
@@ -166,6 +183,8 @@ function occurrenceRow(occurrence) {
         text: [
           formatTimeRange(occurrence.start_time, occurrence.end_time),
           occurrence.class_category ? formatCategory(occurrence.class_category) : null,
+          turma ? formatOccupancy(turma.student_count, turma.capacity) : null,
+          turma && turma.capacity != null ? formatFreeSlots(turma.capacity, turma.student_count) : null,
         ]
           .filter(Boolean)
           .join(' · '),
@@ -177,6 +196,15 @@ function occurrenceRow(occurrence) {
         : el('span', { class: 'badge badge--neutral', text: 'Prevista' }),
       el('span', { class: 'list-item__chevron', html: icon('chevronRight', 18) }),
     ]),
+  ]);
+
+  if (!attending) return row;
+
+  // O "Mostrar alunos" fica FORA do botão da aula, logo abaixo dele: botão
+  // dentro de botão não existe. Sem callback, os nomes são só para consulta.
+  return el('div', { class: 'agenda-occurrence' }, [
+    row,
+    el('div', { class: 'agenda-occurrence__students' }, [studentChips(attending)]),
   ]);
 }
 

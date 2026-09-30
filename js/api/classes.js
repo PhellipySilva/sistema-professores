@@ -10,22 +10,40 @@ const SCHEDULE_COLUMNS = 'id, class_id, day_of_week, start_time, end_time';
    Turmas
    ============================================================ */
 
-/** Turmas com seus horários e a contagem de alunos ativos, em uma query. */
+/**
+ * Turmas com seus horários, a contagem de alunos ativos e quem são eles, em uma
+ * query.
+ *
+ * Os nomes vêm no mesmo embed que já trazia a contagem: a listagem de turmas e a
+ * agenda mostram quem está em cada horário, e buscar turma por turma custaria
+ * uma ida ao servidor por card.
+ */
 export async function listClasses(userId) {
   return cachedRead(cacheKey(userId, 'classes'), async () => {
     const { data, error } = await supabase
       .from('classes')
-      .select(`${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS}), class_students (id, active)`)
+      .select(
+        `${CLASS_COLUMNS}, class_schedules (${SCHEDULE_COLUMNS}), `
+        + 'class_students (id, active, days_of_week, students (id, name))',
+      )
       .eq('user_id', userId)
       .order('name');
 
     if (error) throw error;
 
-    return data.map((row) => ({
-      ...row,
-      class_schedules: sortSchedules(row.class_schedules ?? []),
-      student_count: (row.class_students ?? []).filter((link) => link.active).length,
-    }));
+    return data.map((row) => {
+      const active = (row.class_students ?? []).filter((link) => link.active);
+
+      return {
+        ...row,
+        class_schedules: sortSchedules(row.class_schedules ?? []),
+        student_count: active.length,
+        students: active
+          .filter((link) => link.students)
+          .map((link) => ({ ...link.students, days_of_week: link.days_of_week }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+      };
+    });
   });
 }
 
@@ -328,6 +346,32 @@ export async function countActiveStudents(userId, classId) {
 
   if (error) throw error;
   return count ?? 0;
+}
+
+/**
+ * Move o aluno de uma turma para outra: matricula na nova e desativa a antiga.
+ *
+ * São as MESMAS duas escritas de "adicionar" e "remover" — nenhuma regra nova.
+ * A ordem é de propósito: entrar primeiro e sair depois. Se a saída falhar, a
+ * entrada é desfeita, e o aluno nunca fica sem turma nenhuma por causa de uma
+ * queda de rede no meio do caminho.
+ *
+ * Na turma nova ele entra em todos os dias (days_of_week = null), que é o mesmo
+ * padrão de "Adicionar aluno"; a restrição de dia se ajusta depois, lá.
+ */
+export async function transferStudent(userId, studentId, fromClassId, toClassId) {
+  await addStudentToClass(userId, toClassId, studentId, null);
+
+  try {
+    await removeStudentFromClass(userId, fromClassId, studentId);
+  } catch (error) {
+    try {
+      await removeStudentFromClass(userId, toClassId, studentId);
+    } catch (rollbackError) {
+      console.error('[classes] transferência pela metade e não foi possível desfazer', rollbackError);
+    }
+    throw error;
+  }
 }
 
 /** Remover é desativar: preserva o histórico de frequência daquela turma. */

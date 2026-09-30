@@ -28,8 +28,9 @@ import {
 } from './turmas-ui.js';
 import { classDaysOf, formatEnrollmentDays } from './matriculas.js';
 import { nextOccurrences } from '../agenda/ocorrencias.js';
-import { formatOccupancy, isFull } from '../lista-espera/vagas.js';
+import { formatOccupancy, freeSlots, isFull } from '../lista-espera/vagas.js';
 import { notifyVacancy } from '../lista-espera/notificacoes.js';
+import { openStudentMenu } from './transferencia.js';
 
 const { user } = await initPage('turma');
 
@@ -115,6 +116,12 @@ function summaryCard(turma, enrolledCount) {
             + (isFull(turma.capacity, enrolledCount) ? ' · turma cheia' : ''),
         }),
       ]),
+      turma.capacity === null || turma.capacity === undefined
+        ? null
+        : el('div', { class: 'info-row' }, [
+            el('span', { class: 'info-row__label', text: 'Vagas livres' }),
+            el('span', { class: 'info-row__value', text: String(freeSlots(turma.capacity, enrolledCount)) }),
+          ]),
     ]),
   ]);
 }
@@ -223,10 +230,14 @@ function studentsSection(turma, enrolled, allStudents) {
 
         return el('div', { class: 'list-item' }, [
           el('div', {}, [
-            el('a', {
-              class: 'list-item__title',
-              href: `/pages/aluno.html?id=${student.id}`,
+            // O nome abre o menu do aluno: "Trocar de turma" e o perfil, que
+            // antes era o destino direto do link.
+            el('button', {
+              type: 'button',
+              class: 'list-item__title link-button',
+              title: `Opções de ${student.name}`,
               text: student.name,
+              onclick: () => openStudentMenu({ userId: user.id, student, turma, onChanged: load }),
             }),
             el('p', { class: 'list-item__meta', text: meta.join(' · ') }),
           ]),

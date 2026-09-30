@@ -10,7 +10,7 @@ import { addMinutesToTime, formatTime, formatWeekdayList, minutesBetween, weekda
 import { validateCategory, validateName } from '../utils/validators.js';
 import { buildStudentPicker } from './aluno-picker.js';
 import { classDaysOf, expandEnrollmentDays, normalizeEnrollmentDays } from './matriculas.js';
-import { formatOccupancy, isFull } from '../lista-espera/vagas.js';
+import { formatFreeSlots, formatOccupancy, freeSlots, isFull } from '../lista-espera/vagas.js';
 
 const WEEKDAY_OPTIONS = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
   value: day,
@@ -202,7 +202,7 @@ function dayStripe(days) {
  * mostra todos. Ver a nota de .class-card em css/components.css — nenhuma cor é
  * escolhida aqui, só a classe do dia.
  */
-export function classCard(turma, { onEdit, onDelete }) {
+export function classCard(turma, { onEdit, onDelete, onStudent }) {
   const schedules = turma.class_schedules ?? [];
   const days = classDaysOf(turma);
   const time = scheduleTime(schedules);
@@ -233,7 +233,8 @@ export function classCard(turma, { onEdit, onDelete }) {
       el('p', { class: 'card__meta', text: formatOccupancy(turma.student_count, turma.capacity) }),
       isFull(turma.capacity, turma.student_count)
         ? el('span', { class: 'badge badge--warning', text: 'Turma cheia' })
-        : null,
+        : freeSlotsBadge(turma.capacity, turma.student_count),
+      turma.students ? studentChips(turma.students, onStudent) : null,
     ]),
     el('div', { class: 'card__footer' }, [
       el('button', {
@@ -254,6 +255,66 @@ export function classCard(turma, { onEdit, onDelete }) {
       }),
     ]),
   ]);
+}
+
+/** '2 vagas livres' em verde. Sem capacidade declarada não há número a mostrar. */
+function freeSlotsBadge(capacity, activeCount) {
+  const free = freeSlots(capacity, activeCount);
+  if (free === null || free === 0) return null;
+
+  return el('span', { class: 'badge badge--success', text: formatFreeSlots(capacity, activeCount) });
+}
+
+/**
+ * Os alunos da turma, recolhidos atrás de um botão "Mostrar alunos (N)".
+ *
+ * Os nomes não ficam abertos o tempo todo: com dez turmas na tela, dez listas
+ * de nomes poluíam a leitura. O número já aparece na ocupação; os nomes são
+ * consulta, e ficam a um toque.
+ *
+ * Com `onStudent`, cada nome é um botão (abre o menu do aluno, com "Trocar de
+ * turma"); sem ele, é só texto. Aluno que vai em só alguns dias da turma leva
+ * os dias ao lado do nome, para a turma de segunda e quinta não parecer ter
+ * todo mundo nos dois dias.
+ */
+export function studentChips(students, onStudent) {
+  if (students.length === 0) {
+    return el('p', { class: 'student-chips text-muted text-sm', text: 'Nenhum aluno matriculado.' });
+  }
+
+  const chip = (student) => {
+    const partial = student.days_of_week?.length > 0;
+    const label = partial
+      ? `${student.name} · ${student.days_of_week.map((day) => weekdayShort(day)).join('/')}`
+      : student.name;
+
+    return onStudent
+      ? el('button', {
+          type: 'button',
+          class: 'student-chip student-chip--button',
+          title: `Opções de ${student.name}`,
+          text: label,
+          onclick: () => onStudent(student),
+        })
+      : el('span', { class: 'student-chip', text: label });
+  };
+
+  const list = el('div', { class: 'student-chips hidden', 'aria-label': 'Alunos da turma' }, students.map(chip));
+
+  const showLabel = `Mostrar alunos (${students.length})`;
+  const toggle = el('button', {
+    type: 'button',
+    class: 'btn btn--ghost btn--sm student-toggle',
+    'aria-expanded': 'false',
+    html: `<span>${showLabel}</span>${icon('chevronDown', 16)}`,
+    onclick: () => {
+      const open = list.classList.toggle('hidden') === false;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.querySelector('span').textContent = open ? 'Ocultar alunos' : showLabel;
+    },
+  });
+
+  return el('div', { class: 'student-toggle-group' }, [toggle, list]);
 }
 
 /* ============================================================

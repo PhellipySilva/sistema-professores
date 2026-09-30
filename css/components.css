@@ -1826,6 +1826,125 @@ a.list-item:hover .list-item__chevron {
 }
 
 /* ============================================================
+   Alunos da turma como chips de nome
+   ============================================================
+   Usado no card da turma e na agenda. Ocupa a linha inteira do corpo do card
+   (flex-basis 100%), abaixo da ocupação, e quebra em quantas linhas precisar —
+   no celular os nomes descem em vez de empurrar o card para os lados. */
+
+.student-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.student-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-alt);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-chip--button {
+  min-height: 32px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.student-chip--button:hover {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-surface);
+}
+
+/* "Mostrar alunos (N)": os nomes ficam recolhidos até alguém pedir. Ocupa a
+   linha inteira do corpo do card, com o botão à esquerda e os nomes abaixo. */
+.student-toggle-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.student-toggle {
+  margin-inline-start: calc(-1 * var(--space-2));
+}
+
+.student-toggle svg {
+  transition: transform var(--transition-fast);
+}
+
+.student-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+/* Aula da agenda com o "Mostrar alunos" embaixo. O card--flush daria padding
+   ao invólucro; aqui ele vai para as duas partes, para o destaque do botão da
+   aula continuar indo de ponta a ponta. */
+.card--flush > .agenda-occurrence {
+  padding: 0;
+}
+
+.agenda-occurrence > .list-item {
+  padding: var(--space-4) var(--space-5) var(--space-2);
+}
+
+.agenda-occurrence__students {
+  padding: 0 var(--space-5) var(--space-3);
+}
+
+/* Nome do aluno que abre o menu dele: parece o link de antes, mas é botão. */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* Ícone das opções do menu do aluno. */
+.menu-option__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+/* Turma que não pode receber o aluno (cheia ou ele já está nela): continua
+   visível — o professor entende por que ela não é opção — mas não se escolhe. */
+.picker__row--disabled {
+  opacity: 0.55;
+}
+
+.picker__row--disabled .picker__main {
+  cursor: not-allowed;
+}
+
+/* ============================================================
    Bloco em destaque (aulas de hoje)
    ============================================================
    Fundo azul claríssimo e faixa lateral: é o bloco que o professor procura
